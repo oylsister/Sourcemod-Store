@@ -42,7 +42,7 @@ public Plugin:myinfo =
 /**
  * Plugin is loading.
  */
-public OnPluginStart() 
+public OnPluginStart()
 {
 	LoadConfig();
 	LoadTranslations("store.phrases");
@@ -61,14 +61,14 @@ public OnAllPluginsLoaded()
 /**
  * Load plugin config.
  */
-LoadConfig() 
+LoadConfig()
 {
 	new Handle:kv = CreateKeyValues("root");
-	
+
 	decl String:path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/distributor.cfg");
-	
-	if (!FileToKeyValues(kv, path)) 
+
+	if (!FileToKeyValues(kv, path))
 	{
 		CloseHandle(kv);
 		SetFailState("Can't read config file %s", path);
@@ -100,7 +100,7 @@ LoadConfig()
 
 					g_filters[g_filterCount][FilterPlayerCount] = KvGetNum(kv, "player_count", 0);
 					g_filters[g_filterCount][FilterTeam] = KvGetNum(kv, "team", -1);
-                                       
+
 					decl String:flags[32];
 					KvGetString(kv, "flags", flags, sizeof(flags));
 
@@ -130,8 +130,8 @@ public Action:ForgivePoints(Handle:timer)
 	new credits[MaxClients];
 
 	new count = 0;
-	
-	for (new client = 1; client <= MaxClients; client++) 
+
+	for (new client = 1; client <= MaxClients; client++)
 	{
 		if (IsClientInGame(client) && !IsFakeClient(client) && !IsClientObserver(client))
 		{
@@ -157,12 +157,12 @@ Calculate(client, const String:map[], clientCount)
 
 	for (new filter = 0; filter < g_filterCount; filter++)
 	{
-		if ((g_filters[filter][FilterPlayerCount] == 0 || clientCount >= g_filters[filter][FilterPlayerCount]) && 
-			(StrEqual(g_filters[filter][FilterMap], "") || StrEqual(g_filters[filter][FilterMap], map)) && 
+		if ((g_filters[filter][FilterPlayerCount] == 0 || clientCount >= g_filters[filter][FilterPlayerCount]) &&
+			(StrEqual(g_filters[filter][FilterMap], "") || StrEqual(g_filters[filter][FilterMap], map)) &&
 			(g_filters[filter][FilterFlags] == 0 || HasPermission(client, g_filters[filter][FilterFlags])) &&
 			(g_filters[filter][FilterTeam] == -1 || g_filters[filter][FilterTeam] == GetClientTeam(client)))
 		{
-			min = RoundToZero(min * g_filters[filter][FilterMultiplier] * g_filters[filter][FilterMinimumMultiplier]) 
+			min = RoundToZero(min * g_filters[filter][FilterMultiplier] * g_filters[filter][FilterMinimumMultiplier])
 					+ g_filters[filter][FilterAddend] + g_filters[filter][FilterMinimumAddend];
 
 			max = RoundToZero(max * g_filters[filter][FilterMultiplier] * g_filters[filter][FilterMaximumMultiplier])

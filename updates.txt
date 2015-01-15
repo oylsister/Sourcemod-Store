@@ -1,0 +1,5 @@
+1/7/2015 - Initial Release
+ - Fixed spelling mistakes in include files.
+ - Moved 'credits' & 'store' command values in 'core.cfg' to a sub-section. (tidy)
+ - Added a new keyvalue to 'core.cfg - sql_config_entry' for the SQL entry the plugin set should use. (default = default)
+ - Added message to display if no categories are present. (Translation: "No categories available")

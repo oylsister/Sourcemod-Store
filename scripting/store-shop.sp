@@ -8,19 +8,18 @@
 #include <colors>
 
 new String:g_currencyName[64];
-new String:g_menuCommands[32][32];
 
 new bool:g_hideEmptyCategories = false;
-
 new bool:g_confirmItemPurchase = false;
-
 new bool:g_allowBuyingDuplicates = false;
+new bool:g_hideCategoryDescriptions = false;
 
 new Handle:g_buyItemForward;
+new Handle:g_buyItemPostForward;
 
 /**
  * Called before plugin is loaded.
- * 
+ *
  * @param myself    The plugin handle.
  * @param late      True if the plugin was loaded after map change, false on map start.
  * @param error     Error message if load failed.
@@ -32,8 +31,8 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	CreateNative("Store_OpenShop", Native_OpenShop);
 	CreateNative("Store_OpenShopCategory", Native_OpenShopCategory);
-	
-	RegPluginLibrary("store-shop");	
+
+	RegPluginLibrary("store-shop");
 	return APLRes_Success;
 }
 
@@ -53,50 +52,48 @@ public OnPluginStart()
 {
 	LoadConfig();
 
-	g_buyItemForward = CreateGlobalForward("Store_OnBuyItem", ET_Event, Param_Cell, Param_Cell, Param_Cell);
+	g_buyItemForward = CreateGlobalForward("Store_OnBuyItem", ET_Event, Param_Cell, Param_Cell);
+	g_buyItemPostForward = CreateGlobalForward("Store_OnBuyItem_Post", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
 
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
 
 	Store_AddMainMenuItem("Shop", "Shop Description", _, OnMainMenuShopClick, 2);
-	
-	RegConsoleCmd("sm_shop", Command_OpenShop);
-
-	AddCommandListener(Command_Say, "say");
-	AddCommandListener(Command_Say, "say_team");
 }
 
 /**
  * Configs just finished getting executed.
  */
 public OnConfigsExecuted()
-{    
+{
 	Store_GetCurrencyName(g_currencyName, sizeof(g_currencyName));
 }
 
 /**
  * Load plugin config.
  */
-LoadConfig() 
+LoadConfig()
 {
 	new Handle:kv = CreateKeyValues("root");
-	
+
 	decl String:path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/shop.cfg");
-	
-	if (!FileToKeyValues(kv, path)) 
+
+	if (!FileToKeyValues(kv, path))
 	{
 		CloseHandle(kv);
 		SetFailState("Can't read config file %s", path);
 	}
 
 	decl String:menuCommands[255];
-	KvGetString(kv, "shop_commands", menuCommands, sizeof(menuCommands));
-	ExplodeString(menuCommands, " ", g_menuCommands, sizeof(g_menuCommands), sizeof(g_menuCommands[]));
-	
+	KvGetString(kv, "shop_commands", menuCommands, sizeof(menuCommands), "!shop /shop");
+	Store_RegisterChatCommands(menuCommands, ChatCommand_OpenShop);
+
 	g_confirmItemPurchase = bool:KvGetNum(kv, "confirm_item_purchase", 0);
 
 	g_hideEmptyCategories = bool:KvGetNum(kv, "hide_empty_categories", 0);
+
+	g_hideCategoryDescriptions = bool:KvGetNum(kv, "hide_category_descriptions", 0);
 
 	g_allowBuyingDuplicates = bool:KvGetNum(kv, "allow_buying_duplicates", 0);
 
@@ -108,44 +105,9 @@ public OnMainMenuShopClick(client, const String:value[])
 	OpenShop(client);
 }
 
-/**
- * Called when a client has typed a message to the chat.
- *
- * @param client		Client index.
- * @param command		Command name, lower case.
- * @param args          Argument count. 
- *
- * @return				Action to take.
- */
-public Action:Command_Say(client, const String:command[], args)
-{
-	if (0 < client <= MaxClients && !IsClientInGame(client)) 
-		return Plugin_Continue;   
-	
-	decl String:text[256];
-	GetCmdArgString(text, sizeof(text));
-	StripQuotes(text);
-	
-	for (new index = 0; index < sizeof(g_menuCommands); index++) 
-	{
-		if (StrEqual(g_menuCommands[index], text))
-		{
-			OpenShop(client);
-			
-			if (text[0] == 0x2F)
-				return Plugin_Handled;
-			
-			return Plugin_Continue;
-		}
-	}
-	
-	return Plugin_Continue;
-}
-
-public Action:Command_OpenShop(client, args)
+public ChatCommand_OpenShop(client)
 {
 	OpenShop(client);
-	return Plugin_Handled;
 }
 
 /**
@@ -163,20 +125,21 @@ OpenShop(client)
 new Handle:categories_menu[MAXPLAYERS+1];
 
 public GetCategoriesCallback(ids[], count, any:serial)
-{		
+{
 	new client = GetClientFromSerial(serial);
-	
+
 	if (client == 0)
 		return;
-	
+
 	categories_menu[client] = CreateMenu(ShopMenuSelectHandle);
 	SetMenuTitle(categories_menu[client], "%T\n \n", "Shop", client);
-	
+
+	new amount = 0;
 	for (new category = 0; category < count; category++)
 	{
 		decl String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
 		Store_GetCategoryPluginRequired(ids[category], requiredPlugin, sizeof(requiredPlugin));
-		
+
 		if (!StrEqual(requiredPlugin, "") && !Store_IsItemTypeRegistered(requiredPlugin))
 			continue;
 
@@ -184,45 +147,57 @@ public GetCategoriesCallback(ids[], count, any:serial)
 		WritePackCell(pack, GetClientSerial(client));
 		WritePackCell(pack, ids[category]);
 		WritePackCell(pack, count - category - 1);
-		
+
 		new Handle:filter = CreateTrie();
 		SetTrieValue(filter, "is_buyable", 1);
 		SetTrieValue(filter, "category_id", ids[category]);
 		SetTrieValue(filter, "flags", GetUserFlagBits(client));
 
 		Store_GetItems(filter, GetItemsForCategoryCallback, true, pack);
+		amount++;
+	}
+
+	if (amount < 1)
+	{
+		PrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
 	}
 }
 
 public GetItemsForCategoryCallback(ids[], count, any:pack)
 {
 	ResetPack(pack);
-	
+
 	new serial = ReadPackCell(pack);
 	new categoryId = ReadPackCell(pack);
 	new left = ReadPackCell(pack);
-	
+
 	CloseHandle(pack);
-	
+
 	new client = GetClientFromSerial(serial);
-	
+
 	if (client == 0)
 		return;
 
-	if (g_hideEmptyCategories && count != 0)
+
+	// Display this category if "hide_empty_categories"
+	// is disabled or if it has items.
+	if (!g_hideEmptyCategories || count > 0)
 	{
 		decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetCategoryDisplayName(categoryId, displayName, sizeof(displayName));
 
-		//decl String:description[STORE_MAX_DESCRIPTION_LENGTH];
-		//Store_GetCategoryDescription(categoryId, description, sizeof(description));
+		if (!g_hideCategoryDescriptions)
+		{
+			decl String:description[STORE_MAX_DESCRIPTION_LENGTH];
+			Store_GetCategoryDescription(categoryId, description, sizeof(description));
 
-		//decl String:itemText[sizeof(displayName) + 1 + sizeof(description)];
-		//Format(itemText, sizeof(itemText), "%s\n%s", displayName, description);
-		
+			decl String:itemText[sizeof(displayName) + 1 + sizeof(description)];
+			Format(itemText, sizeof(itemText), "%s\n%s", displayName, description);
+		}
+
 		decl String:itemValue[8];
 		IntToString(categoryId, itemValue, sizeof(itemValue));
-		
+
 		AddMenuItem(categories_menu[client], itemValue, displayName);
 	}
 
@@ -238,7 +213,7 @@ public ShopMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 	if (action == MenuAction_Select)
 	{
 		new String:categoryIndex[64];
-		
+
 		if (GetMenuItem(menu, slot, categoryIndex, sizeof(categoryIndex)))
 			OpenShopCategory(client, StringToInt(categoryIndex));
 	}
@@ -268,7 +243,7 @@ OpenShopCategory(client, categoryId)
 	new Handle:pack = CreateDataPack();
 	WritePackCell(pack, GetClientSerial(client));
 	WritePackCell(pack, categoryId);
-	
+
 	new Handle:filter = CreateTrie();
 	SetTrieValue(filter, "is_buyable", 1);
 	SetTrieValue(filter, "category_id", categoryId);
@@ -278,52 +253,56 @@ OpenShopCategory(client, categoryId)
 }
 
 public GetItemsCallback(ids[], count, any:pack)
-{	
+{
 	ResetPack(pack);
-	
+
 	new serial = ReadPackCell(pack);
 	new categoryId = ReadPackCell(pack);
-	
+
 	CloseHandle(pack);
-	
+
 	new client = GetClientFromSerial(serial);
-	
+
 	if (client == 0)
 		return;
-	
+
 	if (count == 0)
 	{
 		PrintToChat(client, "%s%t", STORE_PREFIX, "No items in this category");
 		OpenShop(client);
-		
+
 		return;
 	}
-	
+
 	decl String:categoryDisplayName[64];
 	Store_GetCategoryDisplayName(categoryId, categoryDisplayName, sizeof(categoryDisplayName));
-		
+
 	new Handle:menu = CreateMenu(ShopCategoryMenuSelectHandle);
 	SetMenuTitle(menu, "%T - %s\n \n", "Shop", client, categoryDisplayName);
 
 	for (new item = 0; item < count; item++)
-	{		
+	{
 		decl String:displayName[64];
-		Store_GetItemDisplayName(ids[item], displayName, sizeof(displayName));
-		
 		decl String:description[128];
-		Store_GetItemDescription(ids[item], description, sizeof(description));
-	
 		decl String:text[sizeof(displayName) + sizeof(description) + 5];
-		Format(text, sizeof(text), "%s [%d %s]\n%s", displayName, Store_GetItemPrice(ids[item]), g_currencyName, description);
-		
+
+		Store_GetItemDisplayName(ids[item], displayName, sizeof(displayName));
+
+		if(g_hideCategoryDescriptions==false){
+			Store_GetItemDescription(ids[item], description, sizeof(description));
+			Format(text, sizeof(text), "%s [%d %s]\n%s", displayName, Store_GetItemPrice(ids[item]), g_currencyName, description);
+		} else {
+			Format(text, sizeof(text), "%s [%d %s]", displayName, Store_GetItemPrice(ids[item]), g_currencyName);
+		}
+
 		decl String:value[8];
 		IntToString(ids[item], value, sizeof(value));
-		
-		AddMenuItem(menu, value, text);    
+
+		AddMenuItem(menu, value, text);
 	}
 
 	SetMenuExitBackButton(menu, true);
-	DisplayMenu(menu, client, 0);   
+	DisplayMenu(menu, client, 0);
 }
 
 public ShopCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
@@ -366,6 +345,19 @@ DoBuyItem(client, itemId, bool:confirmed=false, bool:checkeddupes=false)
 	}
 	else
 	{
+		new Action:result = Plugin_Continue;
+
+		Call_StartForward(g_buyItemForward);
+		Call_PushCell(client);
+		Call_PushCell(itemId);
+		Call_Finish(_:result);
+
+		if (result == Plugin_Handled || result == Plugin_Stop)
+		{
+			// handled or stopped
+			return;
+		}
+
 		new Handle:pack = CreateDataPack();
 		WritePackCell(pack, GetClientSerial(client));
 		WritePackCell(pack, itemId);
@@ -416,7 +408,7 @@ DisplayConfirmationMenu(client, itemId)
 	AddMenuItem(menu, "no", "No");
 
 	SetMenuExitButton(menu, false);
-	DisplayMenu(menu, client, 0);  
+	DisplayMenu(menu, client, 0);
 }
 
 public ConfirmationMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
@@ -440,7 +432,7 @@ public ConfirmationMenuSelectHandle(Handle:menu, MenuAction:action, client, slot
 	{
 		OpenShop(client);
 	}
-	else if (action == MenuAction_DisplayItem) 
+	else if (action == MenuAction_DisplayItem)
 	{
 		decl String:display[64];
 		GetMenuItem(menu, slot, "", 0, _, display, sizeof(display));
@@ -485,21 +477,21 @@ public OnBuyItemComplete(bool:success, any:pack)
 		CPrintToChat(client, "%s%t", STORE_PREFIX, "Not enough credits to buy", g_currencyName);
 	}
 
-	Call_StartForward(g_buyItemForward);
+	OpenShop(client);
+
+	Call_StartForward(g_buyItemPostForward);
 	Call_PushCell(client);
 	Call_PushCell(itemId);
 	Call_PushCell(success);
 	Call_Finish();
-	
-	OpenShop(client);
 }
 
 public Native_OpenShop(Handle:plugin, params)
-{       
+{
 	OpenShop(GetNativeCell(1));
 }
 
 public Native_OpenShopCategory(Handle:plugin, params)
-{       
+{
 	OpenShopCategory(GetNativeCell(1), GetNativeCell(2));
 }

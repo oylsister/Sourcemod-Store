@@ -20,6 +20,11 @@
 	{
 		"en"				"Loadout"	
 	}
+	
+	"No categories available"
+	{
+		"en"				"No categories are currently available."
+	}
 
 	"No items in this category"
 	{

@@ -102,7 +102,7 @@ LoadConfig()
 	KvGetString(kv, "gifting_commands", buffer, sizeof(buffer), "!gift /gift");
 	Store_RegisterChatCommands(buffer, ChatCommand_Gift);
 
-	KvGetString(kv, "gifting_commands", buffer, sizeof(buffer), "!accept /accept");
+	KvGetString(kv, "accept_commands", buffer, sizeof(buffer), "!accept /accept");
 	Store_RegisterChatCommands(buffer, ChatCommand_Accept);
 	
 	new String:creditChoices[MAX_CREDIT_CHOICES][10];

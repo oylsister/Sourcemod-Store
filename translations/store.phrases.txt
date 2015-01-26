@@ -30,6 +30,11 @@
 	{
 		"en"				"There are no items in this category."
 	}
+	
+	"Inventory category is empty"
+	{
+		"en"				"You don't currently own any items in this category."
+	}
 
 	"Item type not registered"
 	{

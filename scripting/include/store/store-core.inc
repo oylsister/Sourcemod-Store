@@ -3,7 +3,7 @@
 #endif
 #define _store_core_included
 
-#define STORE_VERSION "1.2-beta fork1"
+#define STORE_VERSION "1.2-beta fork2"
 #define STORE_PREFIX "\x04[Store] \x01"
 
 funcenum Store_MenuItemClickCallback

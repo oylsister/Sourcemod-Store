@@ -102,6 +102,7 @@ public GetCategoriesCallback(ids[], count, any:serial)
 	new Handle:menu = CreateMenu(RefundMenuSelectHandle);
 	SetMenuTitle(menu, "%T\n \n", "Refund", client);
 	
+	new amount = 0;
 	for (new category = 0; category < count; category++)
 	{
 		decl String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
@@ -128,10 +129,16 @@ public GetCategoriesCallback(ids[], count, any:serial)
 		IntToString(ids[category], itemValue, sizeof(itemValue));
 		
 		AddMenuItem(menu, itemValue, itemText);
+		amount++;
 	}
 	
 	SetMenuExitBackButton(menu, true);
 	DisplayMenu(menu, client, 0);
+	
+	if (amount < 1)
+	{
+		PrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
+	}
 }
 
 public RefundMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)

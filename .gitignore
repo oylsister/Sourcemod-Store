@@ -6,6 +6,12 @@ plugins/
 *.sublime-workspace
 *.sublime-build
 
+*.bat
+
+compile.exe
+compile.dat
+spcomp.exe
+
 ##DEFAULTS##
 
 #################

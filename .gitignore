@@ -1,5 +1,4 @@
-plugins/
-*.smx
+scripting/compiled
 *.zip
 
 *.sublime-project
@@ -8,9 +7,9 @@ plugins/
 
 *.bat
 
-compile.exe
-compile.dat
-spcomp.exe
+scripting/compile.exe
+scripting/compile.dat
+scripting/spcomp.exe
 
 ##DEFAULTS##
 

@@ -140,7 +140,7 @@ public Action:ForgivePoints(Handle:timer)
 
 			if (g_enableMessagePerTick)
 			{
-				PrintToChat(client, "%s%t", STORE_PREFIX, "Received Credits", credits[count], g_currencyName);
+				CPrintToChat(client, "%s%t", STORE_PREFIX, "Received Credits", credits[count], g_currencyName);
 			}
 
 			count++;

@@ -1,11 +1,7 @@
 #pragma semicolon 1
 
 #include <sourcemod>
-#include <store/store-core>
-#include <store/store-backend>
-#include <store/store-inventory>
-#include <store/store-logging>
-#include <store/store-loadout>
+#include <store>
 
 new bool:g_hideEmptyCategories = false;
 
@@ -63,6 +59,7 @@ public OnPluginStart()
 	Store_AddMainMenuItem("Inventory", "Inventory Description", _, OnMainMenuInventoryClick, 4);
 
 	RegAdminCmd("store_itemtypes", Command_PrintItemTypes, ADMFLAG_RCON, "Prints registered item types");
+	RegAdminCmd("sm_store_itemtypes", Command_PrintItemTypes, ADMFLAG_RCON, "Prints registered item types");
 }
 
 /**
@@ -118,7 +115,7 @@ public Action:Command_PrintItemTypes(client, args)
 		decl String:pluginName[32];
 		GetPluginFilename(plugin, pluginName, sizeof(pluginName));
 
-		ReplyToCommand(client, " \"%s\" - %s", typeName, pluginName);			
+		CReplyToCommand(client, " \"%s\" - %s", typeName, pluginName);			
 	}
 
 	return Plugin_Handled;
@@ -181,7 +178,7 @@ public GetCategoriesCallback(ids[], count, any:serial)
 	
 	if (amount == 0)
 	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
 	}
 }
 
@@ -199,11 +196,6 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	
 	if (client <= 0)
 		return;
-		
-	if (count <= 0)
-	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "Inventory category is empty");
-	}
 
 	if (g_hideEmptyCategories && count <= 0)
 	{
@@ -219,7 +211,7 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 	Store_GetCategoryDisplayName(categoryId, displayName, sizeof(displayName));
 
-	//PrintToChatAll("%s %i %i %i", displayName, g_hideEmptyCategories, count, left);
+	//CPrintToChatAll("%s %i %i %i", displayName, g_hideEmptyCategories, count, left);
 
 	//decl String:description[STORE_MAX_DESCRIPTION_LENGTH];
 	//Store_GetCategoryDescription(categoryId, description, sizeof(description));
@@ -298,14 +290,6 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	
 	if (client == 0)
 		return;
-		
-	if (count == 0)
-	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "No items in this category");
-		OpenInventory(client);
-		
-		return;
-	}
 	
 	decl String:categoryDisplayName[64];
 	Store_GetCategoryDisplayName(categoryId, categoryDisplayName, sizeof(categoryDisplayName));
@@ -313,6 +297,7 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	new Handle:menu = CreateMenu(InventoryCategoryMenuSelectHandle);
 	SetMenuTitle(menu, "%T - %s\n \n", "Inventory", client, categoryDisplayName);
 	
+	new amount;
 	for (new item = 0; item < count; item++)
 	{
 		// TODO: Option to display descriptions	
@@ -333,6 +318,12 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 		Format(value, sizeof(value), "%b,%d", equipped[item], ids[item]);
 		
 		AddMenuItem(menu, value, text);
+		amount++;
+	}
+	
+	if (amount <= 0)
+	{
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "Inventory category is empty");
 	}
 
 	SetMenuExitBackButton(menu, true);
@@ -342,7 +333,7 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	else
 		DisplayMenuAtItem(menu, client, slot, 0);
 
-	categories_menu[client] = INVALID_HANDLE;
+	//categories_menu[client] = INVALID_HANDLE;
 }
 
 public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
@@ -373,7 +364,7 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 			
 			if (itemTypeIndex == -1)
 			{
-				PrintToChat(client, "%s%t", STORE_PREFIX, "Item type not registered", type);
+				CPrintToChat(client, "%s%t", STORE_PREFIX, "Item type not registered", type);
 				Store_LogWarning("The item type '%s' wasn't registered by any plugin.", type);
 				
 				OpenInventoryCategory(client, Store_GetItemCategory(id));

@@ -9,3 +9,6 @@
 #include <store/store-shop>
 #include <store/store-loadout>
 #include <store/store-logging>
+
+//External Includes
+#include <multicolors>

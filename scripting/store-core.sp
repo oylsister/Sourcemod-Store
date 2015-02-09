@@ -1,12 +1,7 @@
 #pragma semicolon 1
 
 #include <sourcemod>
-#include <store/store-core>
-#include <store/store-logging>
-#include <store/store-backend>
-
-#include <colors>
-#include <morecolors_store>
+#include <store>
 
 #define MAX_MENU_ITEMS 32
 #define MAX_CHAT_COMMANDS 100
@@ -90,6 +85,7 @@ public OnPluginStart()
 	LoadTranslations("store.phrases");
 
 	RegAdminCmd("store_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
+	RegAdminCmd("sm_store_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
 
 	g_hOnChatCommandForward = CreateGlobalForward("Store_OnChatCommand", ET_Event, Param_Cell, Param_String, Param_String);
 	g_hOnChatCommandPostForward = CreateGlobalForward("Store_OnChatCommand_Post", ET_Ignore, Param_Cell, Param_String, Param_String);
@@ -206,14 +202,14 @@ public ChatCommand_Credits(client)
 
 public OnCommandGetCredits(credits, any:client)
 {
-	PrintToChat(client, "%s%t", STORE_PREFIX, "Store Menu Title", credits, g_currencyName);
+	CPrintToChat(client, "%s%t", STORE_PREFIX, "Store Menu Title", credits, g_currencyName);
 }
 
 public Action:Command_GiveCredits(client, args)
 {
 	if (args < 2)
 	{
-		ReplyToCommand(client, "%sUsage: store_givecredits <name> <credits>", STORE_PREFIX);
+		CReplyToCommand(client, "%sUsage: store_givecredits <name> <credits>", STORE_PREFIX);
 		return Plugin_Handled;
 	}
 
@@ -255,7 +251,7 @@ public Action:Command_GiveCredits(client, args)
 			accountIds[count] = GetSteamAccountID(target_list[i]);
 			count++;
 
-			PrintToChat(target_list[i], "%s%t", STORE_PREFIX, "Received Credits", imoney, g_currencyName);
+			CPrintToChat(target_list[i], "%s%t", STORE_PREFIX, "Received Credits", imoney, g_currencyName);
 		}
 	}
 

@@ -2,9 +2,8 @@
 
 #include <sourcemod>
 #include <clientprefs>
-#include <store/store-core>
-#include <store/store-logging>
-#include <store/store-backend>
+#include <store>
+
 #undef REQUIRE_EXTENSIONS
 #include <tf2_stocks>
 

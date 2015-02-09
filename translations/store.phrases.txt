@@ -284,4 +284,24 @@
 	{
 		"en"				"You can't wear this item."
 	}
+	
+	"Reloading categories and items"
+	{
+		"en"				"Reloading categories and items..."
+	}
+	
+	"Reloaded categories"
+	{
+		"en"				"All categories have been reloaded successfully."
+	}
+	
+	"Reloaded items"
+	{
+		"en"				"All items have been reloaded successfully."
+	}
+	
+	"Check console for reload outputs"
+	{
+		"en"				"Check your console for reload outputs."
+	}
 }

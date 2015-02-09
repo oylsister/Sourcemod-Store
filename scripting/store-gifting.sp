@@ -5,7 +5,6 @@
 #include <sdktools>
 #include <adminmenu>
 #include <store>
-#include <colors>
 #include <smartdm>
 
 #define MAX_CREDIT_CHOICES 100
@@ -179,7 +178,7 @@ public DropGetCreditsCallback(credits, any:pack)
 	}
 	else
 	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "Not enough credits", g_currencyName);
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "Not enough credits", g_currencyName);
 	}
 }
 
@@ -236,9 +235,9 @@ public ChatCommand_Drop(client, const String:command[], const String:args[])
 	if (strlen(args) <= 0)
 	{
 		if (command[0] == 0x2F)
-			PrintToChat(client, "%sUsage: %s <%s>", STORE_PREFIX, command, g_currencyName);
+			CPrintToChat(client, "%sUsage: %s <%s>", STORE_PREFIX, command, g_currencyName);
 		else
-			PrintToChatAll("%sUsage: %s <%s>", STORE_PREFIX, command, g_currencyName);
+			CPrintToChatAll("%sUsage: %s <%s>", STORE_PREFIX, command, g_currencyName);
 		return;
 	}
 
@@ -247,9 +246,9 @@ public ChatCommand_Drop(client, const String:command[], const String:args[])
 	if (credits < 1)
 	{
 		if (command[0] == 0x2F)
-			PrintToChat(client, "%s%d is not a valid amount!", STORE_PREFIX, credits);
+			CPrintToChat(client, "%s%d is not a valid amount!", STORE_PREFIX, credits);
 		else
-			PrintToChatAll("%s%d is not a valid amount!", STORE_PREFIX, credits);
+			CPrintToChatAll("%s%d is not a valid amount!", STORE_PREFIX, credits);
 		return;
 	}
 
@@ -274,7 +273,7 @@ OpenGiftingMenu(client)
 	{
 		if (g_giftRequests[i][GiftRequestActive] && g_giftRequests[i][GiftRequestSender] == client)
 		{
-			PrintToChat(client, "%sYou can only have one active gift pending!", STORE_PREFIX);
+			CPrintToChat(client, "%sYou can only have one active gift pending!", STORE_PREFIX);
 			return;
 		}
 	}
@@ -287,7 +286,8 @@ OpenGiftingMenu(client)
 
 	AddMenuItem(menu, "credits", g_currencyName);
 	AddMenuItem(menu, "item", item);
-
+	
+	SetMenuExitBackButton(menu, true);
 	DisplayMenu(menu, client, 0);
 }
 
@@ -325,7 +325,7 @@ public GiftTypeMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 	}
 	else if (action == MenuAction_Cancel)
 	{
-		if (slot == MenuCancel_Exit)
+		if (slot == MenuCancel_ExitBack)
 		{
 			Store_OpenMainMenu(client);
 		}
@@ -553,7 +553,7 @@ public GetCreditsCallback(credits, any:pack)
 
 	if (giftCredits > credits)
 	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "Not enough credits", g_currencyName);
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "Not enough credits", g_currencyName);
 	}
 	else
 	{
@@ -675,7 +675,7 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 		
 	if (count == 0)
 	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "No items");	
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "No items");	
 		return;
 	}
 	

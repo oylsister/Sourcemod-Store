@@ -1,2 +1,0 @@
-xcopy /s /y "D:\Script\store\translations" "C:\Users\Keith\Documents\Nimi\Source Engine\steamcmd\tf2\tf\addons\sourcemod\translations"
-xcopy /s /y "D:\Script\store\configs\store" "C:\Users\Keith\Documents\Nimi\Source Engine\steamcmd\tf2\tf\addons\sourcemod\configs\store"

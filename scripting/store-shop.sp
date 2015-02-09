@@ -1,11 +1,7 @@
 #pragma semicolon 1
 
 #include <sourcemod>
-#include <store/store-core>
-#include <store/store-backend>
-#include <store/store-logging>
-#include <store/store-inventory>
-#include <colors>
+#include <store>
 
 new String:g_currencyName[64];
 
@@ -159,7 +155,7 @@ public GetCategoriesCallback(ids[], count, any:serial)
 
 	if (amount < 1)
 	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
 	}
 }
 
@@ -268,7 +264,7 @@ public GetItemsCallback(ids[], count, any:pack)
 
 	if (count == 0)
 	{
-		PrintToChat(client, "%s%t", STORE_PREFIX, "No items in this category");
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "No items in this category");
 		OpenShop(client);
 
 		return;
@@ -389,7 +385,7 @@ public DoBuyItem_ItemCountCallBack(count, any:pack)
 	{
 		decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
-		PrintToChat(client, "%s%t", STORE_PREFIX, "Already purchased item", displayName);
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "Already purchased item", displayName);
 	}
 }
 

@@ -2,23 +2,29 @@
 // By Dr. McKay
 // Inspired by: https://forums.alliedmods.net/showthread.php?t=96831
 
-#if defined _morecolors_included
+#if defined _more_colors_included
  #endinput
 #endif
-#define _morecolors_included
+#define _more_colors_included
 
 #include <regex>
 
-#define MORE_COLORS_VERSION		"1.6.2"
-#define MORE_COLORS_MAX_MESSAGE_LENGTH		256
+#define MORE_COLORS_VERSION		"1.9.1pl2"
+#define MC_MAX_MESSAGE_LENGTH		256
+#define MAX_BUFFER_LENGTH		(MC_MAX_MESSAGE_LENGTH * 4)
 
-#define COLOR_RED				0xFF4040
-#define COLOR_BLUE				0x99CCFF
-#define COLOR_GRAY				0xCCCCCC
-#define COLOR_GREEN				0x3EFF3E
+#define MCOLOR_RED				0xFF4040
+#define MCOLOR_BLUE				0x99CCFF
+#define MCOLOR_GRAY				0xCCCCCC
+#define MCOLOR_GREEN				0x3EFF3E
 
-new bool:MoreColors_CSkipList[MAXPLAYERS + 1] = {false, ...};
-new Handle:MoreColors_CTrie = INVALID_HANDLE;
+#define MC_GAME_DODS				0
+
+new bool:MC_SkipList[MAXPLAYERS + 1];
+new Handle:MC_Trie;
+new MC_TeamColors[][] = {{0xCCCCCC, 0x4D7942, 0xFF4040}}; // Multi-dimensional array for games that don't support SayText2. First index is the game index (as defined by the GAME_ defines), second index is team. 0 = spectator, 1 = team1, 2 = team2
+
+static Handle:sm_show_activity = INVALID_HANDLE;
 
 /**
  * Prints a message to a specific client in the chat area.
@@ -30,20 +36,20 @@ new Handle:MoreColors_CTrie = INVALID_HANDLE;
  * 
  * On error/Errors:		If the client is not connected an error will be thrown.
  */
-stock MoreColors_CPrintToChat(client, const String:message[], any:...) {
-	MoreColors_CCheckTrie();
+stock MC_PrintToChat(client, const String:message[], any:...) {
+	MC_CheckTrie();
 	if(client <= 0 || client > MaxClients) {
 		ThrowError("Invalid client index %i", client);
 	}
 	if(!IsClientInGame(client)) {
 		ThrowError("Client %i is not in game", client);
 	}
-	decl String:buffer[MORE_COLORS_MAX_MESSAGE_LENGTH], String:buffer2[MORE_COLORS_MAX_MESSAGE_LENGTH];
+	decl String:buffer[MAX_BUFFER_LENGTH], String:buffer2[MAX_BUFFER_LENGTH];
 	SetGlobalTransTarget(client);
 	Format(buffer, sizeof(buffer), "\x01%s", message);
 	VFormat(buffer2, sizeof(buffer2), buffer, 3);
-	MoreColors_CReplaceColorCodes(buffer2);
-	MoreColors_CSendMessage(client, buffer2);
+	MC_ReplaceColorCodes(buffer2);
+	MC_SendMessage(client, buffer2);
 }
 
 /**
@@ -54,19 +60,19 @@ stock MoreColors_CPrintToChat(client, const String:message[], any:...) {
  * @param message		Message (formatting rules).
  * @noreturn
  */
-stock MoreColors_CPrintToChatAll(const String:message[], any:...) {
-	MoreColors_CCheckTrie();
-	decl String:buffer[MORE_COLORS_MAX_MESSAGE_LENGTH], String:buffer2[MORE_COLORS_MAX_MESSAGE_LENGTH];
+stock MC_PrintToChatAll(const String:message[], any:...) {
+	MC_CheckTrie();
+	decl String:buffer[MAX_BUFFER_LENGTH], String:buffer2[MAX_BUFFER_LENGTH];
 	for(new i = 1; i <= MaxClients; i++) {
-		if(!IsClientInGame(i) || IsFakeClient(i) || MoreColors_CSkipList[i]) {
-			MoreColors_CSkipList[i] = false;
+		if(!IsClientInGame(i) || MC_SkipList[i]) {
+			MC_SkipList[i] = false;
 			continue;
 		}
 		SetGlobalTransTarget(i);
 		Format(buffer, sizeof(buffer), "\x01%s", message);
 		VFormat(buffer2, sizeof(buffer2), buffer, 2);
-		MoreColors_CReplaceColorCodes(buffer2);
-		MoreColors_CSendMessage(i, buffer2);
+		MC_ReplaceColorCodes(buffer2);
+		MC_SendMessage(i, buffer2);
 	}
 }
 
@@ -81,8 +87,8 @@ stock MoreColors_CPrintToChatAll(const String:message[], any:...) {
  * 
  * On error/Errors:		If the client or author are not connected an error will be thrown
  */
-stock MoreColors_CPrintToChatEx(client, author, const String:message[], any:...) {
-	MoreColors_CCheckTrie();
+stock MC_PrintToChatEx(client, author, const String:message[], any:...) {
+	MC_CheckTrie();
 	if(client <= 0 || client > MaxClients) {
 		ThrowError("Invalid client index %i", client);
 	}
@@ -95,43 +101,43 @@ stock MoreColors_CPrintToChatEx(client, author, const String:message[], any:...)
 	if(!IsClientInGame(author)) {
 		ThrowError("Client %i is not in game", author);
 	}
-	decl String:buffer[MORE_COLORS_MAX_MESSAGE_LENGTH], String:buffer2[MORE_COLORS_MAX_MESSAGE_LENGTH];
+	decl String:buffer[MAX_BUFFER_LENGTH], String:buffer2[MAX_BUFFER_LENGTH];
 	SetGlobalTransTarget(client);
 	Format(buffer, sizeof(buffer), "\x01%s", message);
 	VFormat(buffer2, sizeof(buffer2), buffer, 4);
-	MoreColors_CReplaceColorCodes(buffer2, author);
-	MoreColors_CSendMessage(client, buffer2, author);
+	MC_ReplaceColorCodes(buffer2, author);
+	MC_SendMessage(client, buffer2, author);
 }
 
 /**
  * Prints a message to all clients in the chat area.
  * Supports color tags and teamcolor tag.
  *
- * @param author	  Author index whos color will be used for teamcolor tag.
+ * @param author	  Author index whose color will be used for teamcolor tag.
  * @param message   Message (formatting rules).
  * @noreturn
  * 
  * On error/Errors:   If the author is not connected an error will be thrown.
  */
-stock MoreColors_CPrintToChatAllEx(author, const String:message[], any:...) {
-	MoreColors_CCheckTrie();
+stock MC_PrintToChatAllEx(author, const String:message[], any:...) {
+	MC_CheckTrie();
 	if(author <= 0 || author > MaxClients) {
 		ThrowError("Invalid client index %i", author);
 	}
 	if(!IsClientInGame(author)) {
 		ThrowError("Client %i is not in game", author);
 	}
-	decl String:buffer[MORE_COLORS_MAX_MESSAGE_LENGTH], String:buffer2[MORE_COLORS_MAX_MESSAGE_LENGTH];
+	decl String:buffer[MAX_BUFFER_LENGTH], String:buffer2[MAX_BUFFER_LENGTH];
 	for(new i = 1; i <= MaxClients; i++) {
-		if(!IsClientInGame(i) || IsFakeClient(i) || MoreColors_CSkipList[i]) {
-			MoreColors_CSkipList[i] = false;
+		if(!IsClientInGame(i) || MC_SkipList[i]) {
+			MC_SkipList[i] = false;
 			continue;
 		}
 		SetGlobalTransTarget(i);
 		Format(buffer, sizeof(buffer), "\x01%s", message);
 		VFormat(buffer2, sizeof(buffer2), buffer, 3);
-		MoreColors_CReplaceColorCodes(buffer2, author);
-		MoreColors_CSendMessage(i, buffer2, author);
+		MC_ReplaceColorCodes(buffer2, author);
+		MC_SendMessage(i, buffer2, author);
 	}
 }
 
@@ -142,36 +148,58 @@ stock MoreColors_CPrintToChatAllEx(author, const String:message[], any:...) {
  * @param message	Message to send
  * @noreturn
  */
-stock MoreColors_CSendMessage(client, const String:message[], author=0) {
+stock MC_SendMessage(client, const String:message[], author=0) {
 	if(author == 0) {
 		author = client;
 	}
+	decl String:buffer[MC_MAX_MESSAGE_LENGTH];
+	strcopy(buffer, sizeof(buffer), message);
 	new UserMsg:index = GetUserMessageId("SayText2");
 	if(index == INVALID_MESSAGE_ID) {
-		PrintToChat(client, "%s", message);
+		if(GetEngineVersion() == Engine_DODS) {
+			new team = GetClientTeam(author);
+			if(team == 0) {
+				ReplaceString(buffer, sizeof(buffer), "\x03", "\x04", false); // Unassigned gets green
+			} else {
+				decl String:temp[16];
+				Format(temp, sizeof(temp), "\x07%06X", MC_TeamColors[MC_GAME_DODS][team - 1]);
+				ReplaceString(buffer, sizeof(buffer), "\x03", temp, false);
+			}
+		}
+		PrintToChat(client, "%s", buffer);
 		return;
 	}
-	new Handle:bf = StartMessageOne("SayText2", client, USERMSG_RELIABLE|USERMSG_BLOCKHOOKS);
-	BfWriteByte(bf, author); // Message author
-	BfWriteByte(bf, true);
-	BfWriteString(bf, message);
+	new Handle:buf = StartMessageOne("SayText2", client, USERMSG_RELIABLE|USERMSG_BLOCKHOOKS);
+	if(GetFeatureStatus(FeatureType_Native, "GetUserMessageType") == FeatureStatus_Available && GetUserMessageType() == UM_Protobuf) {
+		PbSetInt(buf, "ent_idx", author);
+		PbSetBool(buf, "chat", true);
+		PbSetString(buf, "msg_name", buffer);
+		PbAddString(buf, "params", "");
+		PbAddString(buf, "params", "");
+		PbAddString(buf, "params", "");
+		PbAddString(buf, "params", "");
+	} else {
+		BfWriteByte(buf, author); // Message author
+		BfWriteByte(buf, true); // Chat message
+		BfWriteString(buf, buffer); // Message text
+	}
 	EndMessage();
 }
 
 /**
  * This function should only be used right in front of
- * CPrintToChatAll or CPrintToChatAllEx. It causes those functions
+ * MC_PrintToChatAll or MC_PrintToChatAllEx. It causes those functions
  * to skip the specified client when printing the message.
  * After printing the message, the client will no longer be skipped.
  * 
  * @param client   Client index
  * @noreturn
  */
-stock MoreColors_CSkipNextClient(client) {
+stock MC_SkipNextClient(client) {
 	if(client <= 0 || client > MaxClients) {
 		ThrowError("Invalid client index %i", client);
 	}
-	MoreColors_CSkipList[client] = true;
+	MC_SkipList[client] = true;
 }
 
 /**
@@ -179,25 +207,25 @@ stock MoreColors_CSkipNextClient(client) {
  * 
  * @return			No return
  */
-stock MoreColors_CCheckTrie() {
-	if(MoreColors_CTrie == INVALID_HANDLE) {
-		MoreColors_CTrie = InitColorTrie();
+stock MC_CheckTrie() {
+	if(MC_Trie == INVALID_HANDLE) {
+		MC_Trie = MC_InitColorTrie();
 	}
 }
 
 /**
- * Replaces color tags in a string with color codes (used internally by CPrintToChat, CPrintToChatAll, CPrintToChatEx, and CPrintToChatAllEx
+ * Replaces color tags in a string with color codes (used internally by MC_PrintToChat, MC_PrintToChatAll, MC_PrintToChatEx, and MC_PrintToChatAllEx
  *
  * @param buffer		String.
  * @param author		Optional client index to use for {teamcolor} tags, or 0 for none
- * @param removeTags	Optional boolean value to determine whether we're replacing tags with colors, or just removing tags, used by CRemoveTags
- * @param maxlen		Optional value for max buffer length, used by CRemoveTags
+ * @param removeTags	Optional boolean value to determine whether we're replacing tags with colors, or just removing tags, used by MC_RemoveTags
+ * @param maxlen		Optional value for max buffer length, used by MC_RemoveTags
  * @noreturn
  * 
  * On error/Errors:		If the client index passed for author is invalid or not in game.
  */
-stock MoreColors_CReplaceColorCodes(String:buffer[], author=0, bool:removeTags=false, maxlen=MORE_COLORS_MAX_MESSAGE_LENGTH) {
-	MoreColors_CCheckTrie();
+stock MC_ReplaceColorCodes(String:buffer[], author=0, bool:removeTags=false, maxlen=MAX_BUFFER_LENGTH) {
+	MC_CheckTrie();
 	if(!removeTags) {
 		ReplaceString(buffer, maxlen, "{default}", "\x01", false);
 	} else {
@@ -211,41 +239,29 @@ stock MoreColors_CReplaceColorCodes(String:buffer[], author=0, bool:removeTags=f
 		if(!IsClientInGame(author)) {
 			ThrowError("Client %i is not in game", author);
 		}
-		decl String:game[32];
-		GetGameFolderName(game, sizeof(game));
-		if(StrEqual(game, "dod")) {
-			switch(GetClientTeam(author)) {
-				case 1: ReplaceString(buffer, maxlen, "{teamcolor}", "\x07CCCCCC", false);
-				case 2: ReplaceString(buffer, maxlen, "{teamcolor}", "\x074D7942", false);
-				case 3: ReplaceString(buffer, maxlen, "{teamcolor}", "\x07FF4040", false);
-				default: ReplaceString(buffer, maxlen, "{teamcolor}", "\x04", false);
-			}
-		} else {
-			ReplaceString(buffer, maxlen, "{teamcolor}", "\x03", false);
-		}
+		ReplaceString(buffer, maxlen, "{teamcolor}", "\x03", false);
 	}
 	new cursor = 0;
-	new value, Handle:regex;
+	new value;
 	decl String:tag[32], String:buff[32], String:output[maxlen];
 	strcopy(output, maxlen, buffer);
 	// Since the string's size is going to be changing, output will hold the replaced string and we'll search buffer
 	
+	new Handle:regex = CompileRegex("{[a-zA-Z0-9]+}");
 	for(new i = 0; i < 1000; i++) { // The RegEx extension is quite flaky, so we have to loop here :/. This loop is supposed to be infinite and broken by return, but conditions have been added to be safe.
-		regex = CompileRegex("{[a-zA-Z]+}");
 		if(MatchRegex(regex, buffer[cursor]) < 1) {
 			CloseHandle(regex);
 			strcopy(buffer, maxlen, output);
 			return;
 		}
 		GetRegexSubString(regex, 0, tag, sizeof(tag));
-		MoreColors_CStrToLower(tag);
+		MC_StrToLower(tag);
 		cursor = StrContains(buffer[cursor], tag, false) + cursor + 1;
 		strcopy(buff, sizeof(buff), tag);
 		ReplaceString(buff, sizeof(buff), "{", "");
 		ReplaceString(buff, sizeof(buff), "}", "");
 		
-		if(!GetTrieValue(MoreColors_CTrie, buff, value)) {
-			CloseHandle(regex);
+		if(!GetTrieValue(MC_Trie, buff, value)) {
 			continue;
 		}
 		
@@ -255,7 +271,6 @@ stock MoreColors_CReplaceColorCodes(String:buffer[], author=0, bool:removeTags=f
 			Format(buff, sizeof(buff), "\x07%06X", value);
 			ReplaceString(output, maxlen, tag, buff, false);
 		}
-		CloseHandle(regex);
 	}
 	LogError("[MORE COLORS] Infinite loop broken.");
 }
@@ -270,7 +285,7 @@ stock MoreColors_CReplaceColorCodes(String:buffer[], author=0, bool:removeTags=f
  * @param numChars		Number of characters to return, or 0 for the end of the string
  * @noreturn
  */
-stock MoreColors_CSubString(const String:input[], String:output[], maxlen, start, numChars=0) {
+stock CSubString(const String:input[], String:output[], maxlen, start, numChars=0) {
 	new i = 0;
 	for(;;) {
 		if(i == maxlen - 1 || i >= numChars || input[start + i] == '\0') {
@@ -288,7 +303,7 @@ stock MoreColors_CSubString(const String:input[], String:output[], maxlen, start
  * @param buffer		String to convert
  * @noreturn
  */
-stock MoreColors_CStrToLower(String:buffer[]) {
+stock MC_StrToLower(String:buffer[]) {
 	new len = strlen(buffer);
 	for(new i = 0; i < len; i++) {
 		buffer[i] = CharToLower(buffer[i]);
@@ -302,16 +317,16 @@ stock MoreColors_CStrToLower(String:buffer[]) {
  * @param color			Hexadecimal representation of the color (0xRRGGBB)
  * @return				True if color was added successfully, false if a color already exists with that name
  */
-stock bool:MoreColors_CAddColor(const String:name[], color) {
-	MoreColors_CCheckTrie();
+stock bool:MC_AddColor(const String:name[], color) {
+	MC_CheckTrie();
 	new value;
-	if(GetTrieValue(MoreColors_CTrie, name, value)) {
+	if(GetTrieValue(MC_Trie, name, value)) {
 		return false;
 	}
 	decl String:newName[64];
 	strcopy(newName, sizeof(newName), name);
-	StrToLower(newName);
-	SetTrieValue(MoreColors_CTrie, newName, color);
+	MC_StrToLower(newName);
+	SetTrieValue(MC_Trie, newName, color);
 	return true;
 }
 
@@ -322,8 +337,8 @@ stock bool:MoreColors_CAddColor(const String:name[], color) {
  * @param maxlen		Maximum buffer length
  * @noreturn
  */
-stock MoreColors_CRemoveTags(String:message[], maxlen) {
-	MoreColors_CReplaceColorCodes(message, 0, true, maxlen);
+stock MC_RemoveTags(String:message[], maxlen) {
+	MC_ReplaceColorCodes(message, 0, true, maxlen);
 }
 
 /**
@@ -333,15 +348,15 @@ stock MoreColors_CRemoveTags(String:message[], maxlen) {
  * @param message		Message (formatting rules)
  * @noreturn
  */
-stock CReplyToCommand(client, const String:message[], any:...) {
-	decl String:buffer[MORE_COLORS_MAX_MESSAGE_LENGTH * 2];
+stock MC_ReplyToCommand(client, const String:message[], any:...) {
+	decl String:buffer[MAX_BUFFER_LENGTH];
 	SetGlobalTransTarget(client);
 	VFormat(buffer, sizeof(buffer), message, 3);
 	if(GetCmdReplySource() == SM_REPLY_TO_CONSOLE) {
-		CRemoveTags(buffer, sizeof(buffer));
-		PrintToConsole(client, buffer);
+		MC_RemoveTags(buffer, sizeof(buffer));
+		PrintToConsole(client, "%s", buffer);
 	} else {
-		MoreColors_CPrintToChat(client, buffer);
+		MC_PrintToChat(client, "%s", buffer);
 	}
 }
 
@@ -353,16 +368,361 @@ stock CReplyToCommand(client, const String:message[], any:...) {
  * @param message		Message (formatting rules)
  * @noreturn
  */
-stock MoreColors_CReplyToCommandEx(client, author, const String:message[], any:...) {
-	decl String:buffer[MORE_COLORS_MAX_MESSAGE_LENGTH * 2];
+stock MC_ReplyToCommandEx(client, author, const String:message[], any:...) {
+	decl String:buffer[MAX_BUFFER_LENGTH];
 	SetGlobalTransTarget(client);
-	VFormat(buffer, sizeof(buffer), message, 3);
+	VFormat(buffer, sizeof(buffer), message, 4);
 	if(GetCmdReplySource() == SM_REPLY_TO_CONSOLE) {
-		CRemoveTags(buffer, sizeof(buffer));
-		PrintToConsole(client, buffer);
+		MC_RemoveTags(buffer, sizeof(buffer));
+		PrintToConsole(client, "%s", buffer);
 	} else {
-		MoreColors_CPrintToChatEx(client, author, buffer);
+		MC_PrintToChatEx(client, author, "%s", buffer);
 	}
+}
+
+/**
+ * Displays usage of an admin command to users depending on the 
+ * setting of the sm_show_activity cvar.  
+ *
+ * This version does not display a message to the originating client 
+ * if used from chat triggers or menus.  If manual replies are used 
+ * for these cases, then this function will suffice.  Otherwise, 
+ * MC_ShowActivity2() is slightly more useful.
+ * Supports color tags.
+ *
+ * @param client		Client index doing the action, or 0 for server.
+ * @param format		Formatting rules.
+ * @param ...			Variable number of format parameters.
+ * @noreturn
+ * @error
+ */
+stock MC_ShowActivity(client, const String:format[], any:...)
+{
+	if (sm_show_activity == INVALID_HANDLE)
+		sm_show_activity = FindConVar("sm_show_activity");
+		
+	new String:tag[] = "[SM] ";
+	
+	decl String:szBuffer[MC_MAX_MESSAGE_LENGTH];
+	//decl String:szCMessage[MC_MAX_MESSAGE_LENGTH];
+	new value = GetConVarInt(sm_show_activity);
+	new ReplySource:replyto = GetCmdReplySource();
+	
+	new String:name[MAX_NAME_LENGTH] = "Console";
+	new String:sign[MAX_NAME_LENGTH] = "ADMIN";
+	new bool:display_in_chat = false;
+	if (client != 0)
+	{
+		if (client < 0 || client > MaxClients || !IsClientConnected(client))
+			ThrowError("Client index %d is invalid", client);
+		
+		GetClientName(client, name, sizeof(name));
+		new AdminId:id = GetUserAdmin(client);
+		if (id == INVALID_ADMIN_ID
+			|| !GetAdminFlag(id, Admin_Generic, Access_Effective))
+		{
+			sign = "PLAYER";
+		}
+		
+		/* Display the message to the client? */
+		if (replyto == SM_REPLY_TO_CONSOLE)
+		{
+			SetGlobalTransTarget(client);
+			VFormat(szBuffer, sizeof(szBuffer), format, 3);
+			
+			MC_RemoveTags(szBuffer, sizeof(szBuffer));
+			PrintToConsole(client, "%s%s\n", tag, szBuffer);
+			display_in_chat = true;
+		}
+	}
+	else
+	{
+		SetGlobalTransTarget(LANG_SERVER);
+		VFormat(szBuffer, sizeof(szBuffer), format, 3);
+		
+		MC_RemoveTags(szBuffer, sizeof(szBuffer));
+		PrintToServer("%s%s\n", tag, szBuffer);
+	}
+	
+	if (!value)
+	{
+		return 1;
+	}
+	
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientInGame(i)
+			|| IsFakeClient(i)
+			|| (display_in_chat && i == client))
+		{
+			continue;
+		}
+		new AdminId:id = GetUserAdmin(i);
+		SetGlobalTransTarget(i);
+		if (id == INVALID_ADMIN_ID
+			|| !GetAdminFlag(id, Admin_Generic, Access_Effective))
+		{
+			/* Treat this as a normal user. */
+			if ((value & 1) | (value & 2))
+			{
+				new String:newsign[MAX_NAME_LENGTH];
+				newsign = sign;
+				if ((value & 2) || (i == client))
+				{
+					newsign = name;
+				}
+				VFormat(szBuffer, sizeof(szBuffer), format, 3);
+				
+				MC_PrintToChatEx(i, client, "%s%s: %s", tag, newsign, szBuffer);
+			}
+		}
+		else
+		{
+			/* Treat this as an admin user */
+			new bool:is_root = GetAdminFlag(id, Admin_Root, Access_Effective);
+			if ((value & 4)
+				|| (value & 8)
+				|| ((value & 16) && is_root))
+			{
+				new String:newsign[MAX_NAME_LENGTH];
+				newsign = sign;
+				if ((value & 8) || ((value & 16) && is_root) || (i == client))
+				{
+					newsign = name;
+				}
+				VFormat(szBuffer, sizeof(szBuffer), format, 3);
+				
+				MC_PrintToChatEx(i, client, "%s%s: %s", tag, newsign, szBuffer);
+			}
+		}
+	}
+	
+	return 1;
+}
+
+/**
+ * Same as MC_ShowActivity(), except the tag parameter is used instead of "[SM] " (note that you must supply any spacing).
+ * Supports color tags.
+ *
+ * @param client		Client index doing the action, or 0 for server.
+ * @param tags			Tag to display with.
+ * @param format		Formatting rules.
+ * @param ...			Variable number of format parameters.
+ * @noreturn
+ * @error
+ */
+stock MC_ShowActivityEx(client, const String:tag[], const String:format[], any:...)
+{
+	if (sm_show_activity == INVALID_HANDLE)
+		sm_show_activity = FindConVar("sm_show_activity");
+		
+	decl String:szBuffer[MC_MAX_MESSAGE_LENGTH];
+	//decl String:szCMessage[MC_MAX_MESSAGE_LENGTH];
+	new value = GetConVarInt(sm_show_activity);
+	new ReplySource:replyto = GetCmdReplySource();
+	
+	new String:name[MAX_NAME_LENGTH] = "Console";
+	new String:sign[MAX_NAME_LENGTH] = "ADMIN";
+	new bool:display_in_chat = false;
+	if (client != 0)
+	{
+		if (client < 0 || client > MaxClients || !IsClientConnected(client))
+			ThrowError("Client index %d is invalid", client);
+		
+		GetClientName(client, name, sizeof(name));
+		new AdminId:id = GetUserAdmin(client);
+		if (id == INVALID_ADMIN_ID
+			|| !GetAdminFlag(id, Admin_Generic, Access_Effective))
+		{
+			sign = "PLAYER";
+		}
+		
+		/* Display the message to the client? */
+		if (replyto == SM_REPLY_TO_CONSOLE)
+		{
+			SetGlobalTransTarget(client);
+			VFormat(szBuffer, sizeof(szBuffer), format, 4);
+			
+			MC_RemoveTags(szBuffer, sizeof(szBuffer));
+			PrintToConsole(client, "%s%s\n", tag, szBuffer);
+			display_in_chat = true;
+		}
+	}
+	else
+	{
+		SetGlobalTransTarget(LANG_SERVER);
+		VFormat(szBuffer, sizeof(szBuffer), format, 4);
+		
+		MC_RemoveTags(szBuffer, sizeof(szBuffer));
+		PrintToServer("%s%s\n", tag, szBuffer);
+	}
+	
+	if (!value)
+	{
+		return 1;
+	}
+	
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientInGame(i)
+			|| IsFakeClient(i)
+			|| (display_in_chat && i == client))
+		{
+			continue;
+		}
+		new AdminId:id = GetUserAdmin(i);
+		SetGlobalTransTarget(i);
+		if (id == INVALID_ADMIN_ID
+			|| !GetAdminFlag(id, Admin_Generic, Access_Effective))
+		{
+			/* Treat this as a normal user. */
+			if ((value & 1) | (value & 2))
+			{
+				new String:newsign[MAX_NAME_LENGTH];
+				newsign = sign;
+				if ((value & 2) || (i == client))
+				{
+					newsign = name;
+				}
+				VFormat(szBuffer, sizeof(szBuffer), format, 4);
+				
+				MC_PrintToChatEx(i, client, "%s%s: %s", tag, newsign, szBuffer);
+			}
+		}
+		else
+		{
+			/* Treat this as an admin user */
+			new bool:is_root = GetAdminFlag(id, Admin_Root, Access_Effective);
+			if ((value & 4)
+				|| (value & 8)
+				|| ((value & 16) && is_root))
+			{
+				new String:newsign[MAX_NAME_LENGTH];
+				newsign = sign;
+				if ((value & 8) || ((value & 16) && is_root) || (i == client))
+				{
+					newsign = name;
+				}
+				VFormat(szBuffer, sizeof(szBuffer), format, 4);
+				
+				MC_PrintToChatEx(i, client, "%s%s: %s", tag, newsign, szBuffer);
+			}
+		}
+	}
+	
+	return 1;
+}
+
+/**
+ * Displays usage of an admin command to users depending on the setting of the sm_show_activity cvar.
+ * All users receive a message in their chat text, except for the originating client, 
+ * who receives the message based on the current ReplySource.
+ * Supports color tags.
+ *
+ * @param client		Client index doing the action, or 0 for server.
+ * @param tags			Tag to prepend to the message.
+ * @param format		Formatting rules.
+ * @param ...			Variable number of format parameters.
+ * @noreturn
+ * @error
+ */
+stock MC_ShowActivity2(client, const String:tag[], const String:format[], any:...)
+{
+	if (sm_show_activity == INVALID_HANDLE)
+		sm_show_activity = FindConVar("sm_show_activity");
+	
+	decl String:szBuffer[MC_MAX_MESSAGE_LENGTH];
+	//decl String:szCMessage[MC_MAX_MESSAGE_LENGTH];
+	new value = GetConVarInt(sm_show_activity);
+	// new ReplySource:replyto = GetCmdReplySource();
+	
+	new String:name[MAX_NAME_LENGTH] = "Console";
+	new String:sign[MAX_NAME_LENGTH] = "ADMIN";
+	if (client != 0)
+	{
+		if (client < 0 || client > MaxClients || !IsClientConnected(client))
+			ThrowError("Client index %d is invalid", client);
+		
+		GetClientName(client, name, sizeof(name));
+		new AdminId:id = GetUserAdmin(client);
+		if (id == INVALID_ADMIN_ID
+		|| !GetAdminFlag(id, Admin_Generic, Access_Effective))
+		{
+			sign = "PLAYER";
+		}
+		
+		SetGlobalTransTarget(client);
+		VFormat(szBuffer, sizeof(szBuffer), format, 4);
+		
+		/* We don't display directly to the console because the chat text 
+		 * simply gets added to the console, so we don't want it to print 
+		 * twice.
+		 */
+		MC_PrintToChatEx(client, client, "%s%s", tag, szBuffer);
+	}
+	else
+	{
+		SetGlobalTransTarget(LANG_SERVER);
+		VFormat(szBuffer, sizeof(szBuffer), format, 4);
+		
+		MC_RemoveTags(szBuffer, sizeof(szBuffer));
+		PrintToServer("%s%s\n", tag, szBuffer);
+	}
+	
+	if (!value)
+	{
+		return 1;
+	}
+	
+	for (new i = 1; i <= MaxClients; i++)
+	{
+		if (!IsClientInGame(i)
+		|| IsFakeClient(i)
+		|| i == client)
+		{
+			continue;
+		}
+		new AdminId:id = GetUserAdmin(i);
+		SetGlobalTransTarget(i);
+		if (id == INVALID_ADMIN_ID
+		|| !GetAdminFlag(id, Admin_Generic, Access_Effective))
+		{
+			/* Treat this as a normal user. */
+			if ((value & 1) | (value & 2))
+			{
+				new String:newsign[MAX_NAME_LENGTH];
+				newsign = sign;
+				if ((value & 2))
+				{
+					newsign = name;
+				}
+				VFormat(szBuffer, sizeof(szBuffer), format, 4);
+				
+				MC_PrintToChatEx(i, client, "%s%s: %s", tag, newsign, szBuffer);
+			}
+		}
+		else
+		{
+			/* Treat this as an admin user */
+			new bool:is_root = GetAdminFlag(id, Admin_Root, Access_Effective);
+			if ((value & 4)
+			|| (value & 8)
+			|| ((value & 16) && is_root))
+			{
+				new String:newsign[MAX_NAME_LENGTH];
+				newsign = sign;
+				if ((value & 8) || ((value & 16) && is_root))
+				{
+					newsign = name;
+				}
+				VFormat(szBuffer, sizeof(szBuffer), format, 4);
+				
+				MC_PrintToChatEx(i, client, "%s%s: %s", tag, newsign, szBuffer);
+			}
+		}
+	}
+	
+	return 1;	
 }
 
 /**
@@ -371,9 +731,10 @@ stock MoreColors_CReplyToCommandEx(client, author, const String:message[], any:.
  * @param color			The color name to check
  * @return				True if the color exists, false otherwise
  */
-stock bool:MoreColors_CColorExists(const String:color[]) {
-	MoreColors_CCheckTrie();
-	return GetTrieValue(MoreColors_CTrie, color, 0);
+stock bool:CColorExists(const String:color[]) {
+	MC_CheckTrie();
+	new temp;
+	return GetTrieValue(MC_Trie, color, temp);
 }
 
 /**
@@ -383,7 +744,7 @@ stock bool:MoreColors_CColorExists(const String:color[]) {
  * @return				Client's team color in hexadecimal, or green if unknown
  * On error/Errors:		If the client index passed is invalid or not in game.
  */
-stock MoreColors_CGetTeamColor(client) {
+stock CGetTeamColor(client) {
 	if(client <= 0 || client > MaxClients) {
 		ThrowError("Invalid client index %i", client);
 	}
@@ -393,28 +754,30 @@ stock MoreColors_CGetTeamColor(client) {
 	new value;
 	switch(GetClientTeam(client)) {
 		case 1: {
-			value = COLOR_GRAY;
+			value = MCOLOR_GRAY;
 		}
 		case 2: {
-			value = COLOR_RED;
+			value = MCOLOR_RED;
 		}
 		case 3: {
-			value = COLOR_BLUE;
+			value = MCOLOR_BLUE;
 		}
 		default: {
-			value = COLOR_GREEN;
+			value = MCOLOR_GREEN;
 		}
 	}
 	return value;
 }
 
-stock Handle:InitColorTrie() {
+stock Handle:MC_InitColorTrie() {
 	new Handle:hTrie = CreateTrie();
 	SetTrieValue(hTrie, "aliceblue", 0xF0F8FF);
 	SetTrieValue(hTrie, "allies", 0x4D7942); // same as Allies team in DoD:S
+	SetTrieValue(hTrie, "ancient", 0xEB4B4B); // same as Ancient item rarity in Dota 2
 	SetTrieValue(hTrie, "antiquewhite", 0xFAEBD7);
 	SetTrieValue(hTrie, "aqua", 0x00FFFF);
 	SetTrieValue(hTrie, "aquamarine", 0x7FFFD4);
+	SetTrieValue(hTrie, "arcana", 0xADE55C); // same as Arcana item rarity in Dota 2
 	SetTrieValue(hTrie, "axis", 0xFF4040); // same as Axis team in DoD:S
 	SetTrieValue(hTrie, "azure", 0x007FFF);
 	SetTrieValue(hTrie, "beige", 0xF5F5DC);
@@ -428,10 +791,13 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "cadetblue", 0x5F9EA0);
 	SetTrieValue(hTrie, "chartreuse", 0x7FFF00);
 	SetTrieValue(hTrie, "chocolate", 0xD2691E);
+	SetTrieValue(hTrie, "collectors", 0xAA0000); // same as Collector's item quality in TF2
+	SetTrieValue(hTrie, "common", 0xB0C3D9); // same as Common item rarity in Dota 2
 	SetTrieValue(hTrie, "community", 0x70B04A); // same as Community item quality in TF2
 	SetTrieValue(hTrie, "coral", 0xFF7F50);
 	SetTrieValue(hTrie, "cornflowerblue", 0x6495ED);
 	SetTrieValue(hTrie, "cornsilk", 0xFFF8DC);
+	SetTrieValue(hTrie, "corrupted", 0xA32C2E); // same as Corrupted item quality in Dota 2
 	SetTrieValue(hTrie, "crimson", 0xDC143C);
 	SetTrieValue(hTrie, "cyan", 0x00FFFF);
 	SetTrieValue(hTrie, "darkblue", 0x00008B);
@@ -458,9 +824,11 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "dimgray", 0x696969);
 	SetTrieValue(hTrie, "dimgrey", 0x696969);
 	SetTrieValue(hTrie, "dodgerblue", 0x1E90FF);
+	SetTrieValue(hTrie, "exalted", 0xCCCCCD); // same as Exalted item quality in Dota 2
 	SetTrieValue(hTrie, "firebrick", 0xB22222);
 	SetTrieValue(hTrie, "floralwhite", 0xFFFAF0);
 	SetTrieValue(hTrie, "forestgreen", 0x228B22);
+	SetTrieValue(hTrie, "frozen", 0x4983B3); // same as Frozen item quality in Dota 2
 	SetTrieValue(hTrie, "fuchsia", 0xFF00FF);
 	SetTrieValue(hTrie, "fullblue", 0x0000FF);
 	SetTrieValue(hTrie, "fullred", 0xFF0000);
@@ -476,6 +844,7 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "haunted", 0x38F3AB); // same as Haunted item quality in TF2
 	SetTrieValue(hTrie, "honeydew", 0xF0FFF0);
 	SetTrieValue(hTrie, "hotpink", 0xFF69B4);
+	SetTrieValue(hTrie, "immortal", 0xE4AE33); // same as Immortal item rarity in Dota 2
 	SetTrieValue(hTrie, "indianred", 0xCD5C5C);
 	SetTrieValue(hTrie, "indigo", 0x4B0082);
 	SetTrieValue(hTrie, "ivory", 0xFFFFF0);
@@ -483,6 +852,7 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "lavender", 0xE6E6FA);
 	SetTrieValue(hTrie, "lavenderblush", 0xFFF0F5);
 	SetTrieValue(hTrie, "lawngreen", 0x7CFC00);
+	SetTrieValue(hTrie, "legendary", 0xD32CE6); // same as Legendary item rarity in Dota 2
 	SetTrieValue(hTrie, "lemonchiffon", 0xFFFACD);
 	SetTrieValue(hTrie, "lightblue", 0xADD8E6);
 	SetTrieValue(hTrie, "lightcoral", 0xF08080);
@@ -517,6 +887,7 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "mintcream", 0xF5FFFA);
 	SetTrieValue(hTrie, "mistyrose", 0xFFE4E1);
 	SetTrieValue(hTrie, "moccasin", 0xFFE4B5);
+	SetTrieValue(hTrie, "mythical", 0x8847FF); // same as Mythical item rarity in Dota 2
 	SetTrieValue(hTrie, "navajowhite", 0xFFDEAD);
 	SetTrieValue(hTrie, "navy", 0x000080);
 	SetTrieValue(hTrie, "normal", 0xB2B2B2); // same as Normal item quality in TF2
@@ -537,6 +908,7 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "plum", 0xDDA0DD);
 	SetTrieValue(hTrie, "powderblue", 0xB0E0E6);
 	SetTrieValue(hTrie, "purple", 0x800080);
+	SetTrieValue(hTrie, "rare", 0x4B69FF); // same as Rare item rarity in Dota 2
 	SetTrieValue(hTrie, "red", 0xFF4040); // same as RED/Terrorist team color
 	SetTrieValue(hTrie, "rosybrown", 0xBC8F8F);
 	SetTrieValue(hTrie, "royalblue", 0x4169E1);
@@ -561,6 +933,7 @@ stock Handle:InitColorTrie() {
 	SetTrieValue(hTrie, "thistle", 0xD8BFD8);
 	SetTrieValue(hTrie, "tomato", 0xFF6347);
 	SetTrieValue(hTrie, "turquoise", 0x40E0D0);
+	SetTrieValue(hTrie, "uncommon", 0xB0C3D9); // same as Uncommon item rarity in Dota 2
 	SetTrieValue(hTrie, "unique", 0xFFD700); // same as Unique item quality in TF2
 	SetTrieValue(hTrie, "unusual", 0x8650AC); // same as Unusual item quality in TF2
 	SetTrieValue(hTrie, "valve", 0xA50F79); // same as Valve item quality in TF2

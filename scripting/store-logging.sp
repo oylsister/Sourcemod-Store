@@ -1,7 +1,7 @@
 #pragma semicolon 1
 
-#include <store/store-core>
-#include <store/store-logging>
+#include <sourcemod>
+#include <store>
 
 #define PLUGIN_NAME_RESERVED_LENGTH 33
 

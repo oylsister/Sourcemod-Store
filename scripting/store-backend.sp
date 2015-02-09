@@ -1,9 +1,7 @@
 #pragma semicolon 1
 
-#include <store/store-core>
-#include <store/store-logging>
-#include <store/store-backend>
-#include <store/store-inventory>
+#include <sourcemod>
+#include <store>
 
 #define MAX_CATEGORIES	32
 #define MAX_ITEMS 		1024
@@ -133,11 +131,15 @@ public Plugin:myinfo =
  */
 public OnPluginStart()
 {
+	LoadTranslations("common.phrases");
+	LoadTranslations("store.phrases");
+	
 	g_dbInitializedForward = CreateGlobalForward("Store_OnDatabaseInitialized", ET_Event);
 	g_reloadItemsForward = CreateGlobalForward("Store_OnReloadItems", ET_Event);
 	g_reloadItemsPostForward = CreateGlobalForward("Store_OnReloadItemsPost", ET_Event);
 
 	RegAdminCmd("store_reloaditems", Command_ReloadItems, ADMFLAG_RCON, "Reloads store item cache.");
+	RegAdminCmd("sm_store_reloaditems", Command_ReloadItems, ADMFLAG_RCON, "Reloads store item cache.");
 }
 
 public OnAllPluginsLoaded()
@@ -149,7 +151,7 @@ public OnMapStart()
 {
 	if (g_hSQL != INVALID_HANDLE)
 	{
-		ReloadItemCache();
+		ReloadItemCache(-1);
 	}
 }
 
@@ -251,7 +253,7 @@ public T_RegisterCallback(Handle:owner, Handle:hndl, const String:error[], any:d
  *
  * @noreturn
  */
-GetCategories(Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_HANDLE, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
+GetCategories(client, Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_HANDLE, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
 {
 	if (loadFromCache && g_categoryCount != -1)
 	{
@@ -282,6 +284,8 @@ GetCategories(Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_H
 
 		SQL_TQuery(g_hSQL, T_GetCategoriesCallback, "SELECT id, display_name, description, require_plugin FROM store_categories", pack);
 	}
+	
+	if (client != -1) CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded categories");
 }
 
 public T_GetCategoriesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
@@ -314,7 +318,7 @@ public T_GetCategoriesCallback(Handle:owner, Handle:hndl, const String:error[], 
 		g_categoryCount++;
 	}
 
-	GetCategories(callback, plugin, true, arg);
+	GetCategories(-1, callback, plugin, true, arg);
 }
 
 GetCategoryIndex(id)
@@ -368,7 +372,7 @@ GetCategoryIndex(id)
  *
  * @noreturn
  */
-GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_HANDLE, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
+GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_HANDLE, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
 {
 	if (loadFromCache && g_itemCount != -1)
 	{
@@ -429,6 +433,8 @@ GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = Store
 
 		SQL_TQuery(g_hSQL, T_GetItemsCallback, "SELECT id, name, display_name, description, type, loadout_slot, price, category_id, attrs, LENGTH(attrs) AS attrs_len, is_buyable, is_tradeable, is_refundable, flags FROM store_items ORDER BY price, display_name", pack);
 	}
+	
+	if (client != -1) CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded items");
 }
 
 public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
@@ -490,7 +496,7 @@ public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	Call_StartForward(g_reloadItemsPostForward);
 	Call_Finish();
 
-	GetItems(filter, callback, plugin, true, arg);
+	GetItems(-1, filter, callback, plugin, true, arg);
 }
 
 GetItemIndex(id)
@@ -820,7 +826,7 @@ GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItemsCallback:cal
 	if (g_itemCount == -1)
 	{
 		Store_LogWarning("Store_GetUserItems has been called before item loading.");
-		GetItems(INVALID_HANDLE, GetUserItemsLoadCallback, INVALID_HANDLE, true, pack);
+		GetItems(-1, INVALID_HANDLE, GetUserItemsLoadCallback, INVALID_HANDLE, true, pack);
 
 		return;
 	}
@@ -1633,10 +1639,10 @@ public T_GiveDifferentCreditsToUsersCallback(Handle:owner, Handle:hndl, const St
  *
  * @noreturn
  */
-ReloadItemCache()
+ReloadItemCache(client)
 {
-	GetCategories(_, _, false);
-	GetItems(_, _, _, false);
+	GetCategories(client, _, _, false);
+	GetItems(client, _, _, _, false);
 }
 
 ConnectSQL()
@@ -1685,6 +1691,7 @@ public T_ConnectSQLCallback(Handle:owner, Handle:hndl, const String:error[], any
 	if (StrEqual(driver, "mysql", false))
 	{
 		SQL_FastQuery(g_hSQL, "SET NAMES  'utf8'");
+		SQL_FastQuery(g_hSQL, "ALTER TABLE `store_items` ADD `flags` varchar(11) DEFAULT NULL;");
 	}
 
 	CloseHandle(hndl);
@@ -1692,17 +1699,22 @@ public T_ConnectSQLCallback(Handle:owner, Handle:hndl, const String:error[], any
 	Call_StartForward(g_dbInitializedForward);
 	Call_Finish();
 
-	ReloadItemCache();
+	ReloadItemCache(-1);
 
 	g_reconnectCounter = 1;
 }
 
 public Action:Command_ReloadItems(client, args)
 {
-	ReplyToCommand(client, "Reloading items...");
-	ReloadItemCache();
-
+	if (client != 0) CPrintToChat(client, "%s%t", STORE_PREFIX, "Check console for reload outputs");
+	RequestFrame(Frame_ReloadItems, client);
 	return Plugin_Handled;
+}
+
+public Frame_ReloadItems(any:client)
+{
+	CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloading categories and items");
+	ReloadItemCache(client);
 }
 
 public Native_Register(Handle:plugin, params)
@@ -1725,7 +1737,7 @@ public Native_GetCategories(Handle:plugin, params)
 	if (params == 3)
 		data = GetNativeCell(3);
 
-	GetCategories(Store_GetItemsCallback:GetNativeCell(1), plugin, bool:GetNativeCell(2), data);
+	GetCategories(-1, Store_GetItemsCallback:GetNativeCell(1), plugin, bool:GetNativeCell(2), data);
 }
 
 public Native_GetCategoryDisplayName(Handle:plugin, params)
@@ -1750,7 +1762,7 @@ public Native_GetItems(Handle:plugin, params)
 	if (params == 4)
 		data = GetNativeCell(4);
 
-	GetItems(Handle:GetNativeCell(1), Store_GetItemsCallback:GetNativeCell(2), plugin, bool:GetNativeCell(3), data);
+	GetItems(-1, Handle:GetNativeCell(1), Store_GetItemsCallback:GetNativeCell(2), plugin, bool:GetNativeCell(3), data);
 }
 
 public Native_GetItemName(Handle:plugin, params)
@@ -1981,5 +1993,5 @@ public Native_GiveDifferentCreditsToUsers(Handle:plugin, params)
 
 public Native_ReloadItemCache(Handle:plugin, params)
 {
-	ReloadItemCache();
+	ReloadItemCache(-1);
 }

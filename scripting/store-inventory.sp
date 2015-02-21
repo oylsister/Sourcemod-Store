@@ -567,7 +567,7 @@ public Native_CallItemAttrsCallback(Handle:plugin, params)
 	
 	new Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:ReadPackFunction(pack);
 	
-	if (callback == INVALID_FUNCTION)
+	if (callback == INVALID_FUNCTION || callback == Function:-1)
 		return false;
 	
 	Call_StartFunction(callbackPlugin, callback);

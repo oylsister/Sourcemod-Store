@@ -673,7 +673,7 @@ GetLoadouts(Handle:filter, Store_GetItemsCallback:callback = INVALID_FUNCTION, H
 {
 	if (loadFromCache && g_loadoutCount != -1)
 	{
-		if (callback == INVALID_FUNCTION)
+		if (callback == INVALID_FUNCTION || callback == Function:-1)
 			return;
 
 		new loadouts[g_loadoutCount];
@@ -1463,7 +1463,7 @@ public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], an
 
 	CloseHandle(pack);
 
-	if (callback != INVALID_FUNCTION)
+	if (callback != INVALID_FUNCTION && callback != Function:-1)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
@@ -1534,7 +1534,7 @@ public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	
 	CloseHandle(pack);
 	
-	if (callback != INVALID_FUNCTION)
+	if (callback != INVALID_FUNCTION && callback != Function:-1)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);

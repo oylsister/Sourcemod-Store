@@ -168,7 +168,7 @@ public Action:OnClientSayCommand(client, const String:command[], const String:sA
 			if (result == Plugin_Handled || result == Plugin_Stop)
 				return Plugin_Continue;
 
-			Call_StartFunction(g_chatCommands[i][ChatCommandPlugin], Function:g_chatCommands[i][ChatCommandCallback]);
+			Call_StartFunction(g_chatCommands[i][ChatCommandPlugin], g_chatCommands[i][ChatCommandCallback]);
 			Call_PushCell(client);
 			Call_PushString(cmds[0]);
 			Call_PushString(cmds[1]);
@@ -400,7 +400,7 @@ public MainMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 	{
 		case MenuAction_Select:
 		{
-			Call_StartFunction(g_menuItems[slot][MenuItemPlugin], Function:g_menuItems[slot][MenuItemCallback]);
+			Call_StartFunction(g_menuItems[slot][MenuItemPlugin], g_menuItems[slot][MenuItemCallback]);
 			Call_PushCell(client);
 			Call_PushString(g_menuItems[slot][MenuItemValue]);
 			Call_Finish();
@@ -428,7 +428,7 @@ public Native_AddMainMenuItem(Handle:plugin, params)
 	decl String:value[64];
 	GetNativeString(3, value, sizeof(value));
 
-	AddMainMenuItem(displayName, description, value, plugin, Store_MenuItemClickCallback:GetNativeCell(4), GetNativeCell(5));
+	AddMainMenuItem(displayName, description, value, plugin, Store_MenuItemClickCallback:GetNativeFunction(4), GetNativeCell(5));
 }
 
 public Native_GetCurrencyName(Handle:plugin, params)
@@ -488,5 +488,5 @@ public Native_RegisterChatCommands(Handle:plugin, params)
 	decl String:command[32];
 	GetNativeString(1, command, sizeof(command));
 
-	return RegisterCommands(plugin, command, Store_ChatCommandCallback:GetNativeCell(2));
+	return RegisterCommands(plugin, command, Store_ChatCommandCallback:GetNativeFunction(2));
 }

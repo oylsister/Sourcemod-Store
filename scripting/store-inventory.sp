@@ -378,9 +378,9 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 			ResetPack(itemType);
 			
 			new Handle:plugin = Handle:ReadPackCell(itemType);
-			new callback = ReadPackCell(itemType);
-		
-			Call_StartFunction(plugin, Function:callback);
+			new Store_ItemUseCallback:callback = Store_ItemUseCallback:ReadPackFunction(itemType);
+			
+			Call_StartFunction(plugin, callback);
 			Call_PushCell(client);
 			Call_PushCell(id);
 			Call_PushCell(equipped);
@@ -389,7 +389,7 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 			if (callbackValue != Store_DoNothing)
 			{
 				new auth = GetSteamAccountID(client);
-					
+				
 				new Handle:pack = CreateDataPack();
 				WritePackCell(pack, GetClientSerial(client));
 				WritePackCell(pack, slot);
@@ -484,7 +484,7 @@ public UseItemCallback(accountId, itemId, any:pack)
 *
 * @noreturn
 */
-RegisterItemType(const String:type[], Handle:plugin, Store_ItemUseCallback:useCallback, Store_ItemGetAttributesCallback:attrsCallback = Store_ItemGetAttributesCallback:0)
+RegisterItemType(const String:type[], Handle:plugin, Store_ItemUseCallback:useCallback, Store_ItemGetAttributesCallback:attrsCallback = INVALID_FUNCTION)
 {
 	if (g_itemTypes == INVALID_HANDLE)
 		g_itemTypes = CreateArray();
@@ -504,8 +504,8 @@ RegisterItemType(const String:type[], Handle:plugin, Store_ItemUseCallback:useCa
 
 	new Handle:itemType = CreateDataPack();
 	WritePackCell(itemType, _:plugin); // 0
-	WritePackCell(itemType, _:useCallback); // 8
-	WritePackCell(itemType, _:attrsCallback); // 16
+	WritePackFunction(itemType, useCallback); // 8(?)
+	WritePackFunction(itemType, attrsCallback); // 16(?)
 	WritePackString(itemType, type); // 24
 
 	new index = PushArrayCell(g_itemTypes, itemType);
@@ -527,7 +527,7 @@ public Native_RegisterItemType(Handle:plugin, params)
 	decl String:type[STORE_MAX_TYPE_LENGTH];
 	GetNativeString(1, type, sizeof(type));
 	
-	RegisterItemType(type, plugin, Store_ItemUseCallback:GetNativeCell(2), Store_ItemGetAttributesCallback:GetNativeCell(3));
+	RegisterItemType(type, plugin, Store_ItemUseCallback:GetNativeFunction(2), Store_ItemGetAttributesCallback:GetNativeFunction(3));
 }
 
 public Native_IsItemTypeRegistered(Handle:plugin, params)
@@ -562,14 +562,15 @@ public Native_CallItemAttrsCallback(Handle:plugin, params)
 
 	new Handle:callbackPlugin = Handle:ReadPackCell(pack);
 	
-	SetPackPosition(pack, 16);
-
-	new callback = ReadPackCell(pack);
-
-	if (callback == 0)
+	//SetPackPosition(pack, 16);
+	ReadPackFunction(pack);
+	
+	new Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:ReadPackFunction(pack);
+	
+	if (callback == INVALID_FUNCTION)
 		return false;
-
-	Call_StartFunction(callbackPlugin, Function:callback);
+	
+	Call_StartFunction(callbackPlugin, callback);
 	Call_PushString(name);
 	Call_PushString(attrs);
 	Call_Finish();	

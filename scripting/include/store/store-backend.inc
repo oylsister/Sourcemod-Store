@@ -15,22 +15,22 @@
 
 #define STORE_MAX_ATTRIBUTES_LENGTH		10*1024
 
-functag Store_GetItemsCallback public(items[], count, any:data);
-functag Store_GetUserItemsCallback public(useritems[], bool:equipped[], useritemCount[], count, loadoutId, any:data);
+typedef Store_GetItemsCallback = function void(int items[], int count, any data);
+typedef Store_GetUserItemsCallback = function void(int useritems[], bool equipped[], int useritemCount[], int count, int loadoutId, any data);
 
-funcenum Store_ItemGetAttributesCallback 
+typeset Store_ItemGetAttributesCallback 
 {
-	public(const String:itemName[], const String:attrs[]),
-	public(const String:itemName[], const String:attrs[], any:data)
+	function void(const char[] itemName, const char[] attrs);
+	function void(const char[] itemName, const char[] attrs, any data);
 }
 
-functag Store_GetCreditsCallback public(credits, any:data);
-functag Store_GiveCreditsCallback public(accountId, any:data);
+typedef Store_GetCreditsCallback = function void(int credits, any data);
+typedef Store_GiveCreditsCallback = function void(int accountId, any data);
 
-functag Store_BuyItemCallback public(bool:success, any:data);
-functag Store_EquipItemCallback public(accountId, itemId, loadoutId, any:data);
-functag Store_UseItemCallback public(accountId, itemId, any:data);
-functag Store_GetUserItemCountCallback public(count, any:data);
+typedef Store_BuyItemCallback = function void(bool success, any data);
+typedef Store_EquipItemCallback = function void(int accountId, int itemId, int loadoutId, any data);
+typedef Store_UseItemCallback = function void(int accountId, int itemId, any data);
+typedef Store_GetUserItemCountCallback = function void(int count, any data);
 
 forward Store_OnDatabaseInitialized();
 
@@ -129,7 +129,7 @@ native Store_RegisterClient(client, credits = 0);
  *
  * @noreturn
  */
-native Store_GetCategories(Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_HANDLE, bool:loadFromCache = true, any:data = 0);
+native Store_GetCategories(Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, any:data = 0);
 
 /**
  * Retrieves a category's display name by its ID.
@@ -230,7 +230,7 @@ native Store_GetCategoryPluginRequired(id, String:pluginRequired[], maxlength);
  *
  * @noreturn
  */
-native Store_GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = Store_GetItemsCallback:INVALID_HANDLE, bool:loadFromCache = true, any:data = 0);
+native Store_GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, any:data = 0);
 
 /**
  * Retrieves an item's name by its ID.
@@ -379,7 +379,7 @@ native bool:Store_IsItemRefundable(id);
  *
  * @noreturn
  */
-native Store_GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:0, any:data = 0);
+native Store_GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /** 
  * Modifies item attributes asynchronously.
@@ -388,7 +388,7 @@ native Store_GetItemAttributes(const String:itemName[], Store_ItemGetAttributesC
  *
  * @noreturn
  */
-native Store_WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItemCallback:callback = Store_BuyItemCallback:0, any:data = 0);
+native Store_WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItemCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Retrieves loadouts from the database. 
@@ -608,7 +608,7 @@ native Store_GetCredits(accountId, Store_GetCreditsCallback:callback, any:data =
  *
  * @noreturn
  */
-native Store_GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:INVALID_HANDLE, any:data = 0);
+native Store_GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Gives multiple players a specific amount of credits. 
@@ -656,7 +656,7 @@ native Store_GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits
  *
  * @noreturn
  */
-native Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:INVALID_HANDLE, any:data = 0);
+native Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_GiveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Buys an item for a player, using his credits.

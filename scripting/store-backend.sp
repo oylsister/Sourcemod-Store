@@ -4,7 +4,7 @@
 #include <store>
 
 #define MAX_CATEGORIES	32
-#define MAX_ITEMS 		2048
+#define MAX_ITEMS 		1024
 #define MAX_LOADOUTS	32
 
 enum Category

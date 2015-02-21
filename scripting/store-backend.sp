@@ -257,7 +257,7 @@ GetCategories(client, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle
 {
 	if (loadFromCache && g_categoryCount != -1)
 	{
-		if (callback == INVALID_FUNCTION)
+		if (callback == INVALID_FUNCTION || callback == Function:0)
 			return;
 
 		new categories[g_categoryCount];
@@ -376,7 +376,7 @@ GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback
 {
 	if (loadFromCache && g_itemCount != -1)
 	{
-		if (callback == INVALID_FUNCTION)
+		if (callback == INVALID_FUNCTION || callback == Function:0)
 			return;
 
 		new categoryId;
@@ -566,7 +566,7 @@ public T_GetItemAttributesCallback(Handle:owner, Handle:hndl, const String:error
 			decl String:attrs[attrsLength+1];
 			SQL_FetchString(hndl, 0, attrs, attrsLength+1);
 			
-			if (callback != INVALID_FUNCTION)
+			if (callback != INVALID_FUNCTION && callback != Function:0)
 			{
 				Call_StartFunction(plugin, callback);
 				Call_PushString(itemName);
@@ -624,7 +624,7 @@ public T_WriteItemAttributesCallback(Handle:owner, Handle:hndl, const String:err
 
 	CloseHandle(pack);
 
-	if (callback != INVALID_FUNCTION)
+	if (callback != INVALID_FUNCTION && callback != Function:0)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(true);
@@ -673,7 +673,7 @@ GetLoadouts(Handle:filter, Store_GetItemsCallback:callback = INVALID_FUNCTION, H
 {
 	if (loadFromCache && g_loadoutCount != -1)
 	{
-		if (callback == INVALID_FUNCTION || callback == Function:-1)
+		if (callback == INVALID_FUNCTION || callback == Function:0)
 			return;
 
 		new loadouts[g_loadoutCount];
@@ -1463,7 +1463,7 @@ public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], an
 
 	CloseHandle(pack);
 
-	if (callback != INVALID_FUNCTION && callback != Function:-1)
+	if (callback != INVALID_FUNCTION && callback != Function:0)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
@@ -1534,7 +1534,7 @@ public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	
 	CloseHandle(pack);
 	
-	if (callback != INVALID_FUNCTION && callback != Function:-1)
+	if (callback != INVALID_FUNCTION && callback != Function:0)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);

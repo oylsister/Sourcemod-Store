@@ -11,7 +11,7 @@ enum Store_ItemUseAction
 	Store_DoNothing
 }
 
-functag Store_ItemUseCallback Store_ItemUseAction:public(client, itemId, bool:equipped);
+typedef Store_ItemUseCallback = function Store_ItemUseAction(int client, int itemId, bool equipped);
 
 /**
  * Opens the inventory menu for a client.
@@ -48,7 +48,7 @@ native Store_OpenInventoryCategory(client, categoryId);
  *
  * @noreturn
  */
-native Store_RegisterItemType(const String:type[], Store_ItemUseCallback:useCallback, Store_ItemGetAttributesCallback:attrsCallback = Store_ItemGetAttributesCallback:0);
+native Store_RegisterItemType(const String:type[], Store_ItemUseCallback:useCallback, Store_ItemGetAttributesCallback:attrsCallback = INVALID_FUNCTION);
 
 /**
  * Determines whether or not a specific item type string is registered.

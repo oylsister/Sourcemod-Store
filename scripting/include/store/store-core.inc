@@ -7,16 +7,16 @@
 #define STORE_PREFIX "{GREEN}[Store] {DEFAULT}"
 #define STORE_PREFIX_NOCOLOR "[Store] "
 
-funcenum Store_MenuItemClickCallback
+typeset Store_MenuItemClickCallback
 {
-	public(client, const String:value[])
+	function void(int client, const char[] value);
 }
 
-funcenum Store_ChatCommandCallback
+typeset Store_ChatCommandCallback
 {
-	public(client),
-	public(client, const String:command[]),
-	public(client, const String:command[], const String:args[])
+	function void(int client);
+	function void(int client, const char[] command);
+	function void(int client, const char[] command, const char[] args);
 }
 
 forward Action:Store_OnChatCommand(client, const String:command[], const String:args[]);

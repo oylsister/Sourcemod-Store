@@ -1,36 +1,61 @@
+/*
+	Special thanks to Bara20 for a base to work off of. I decided not to include his include with this plugin since It's fairly straight forward code.
+	-https://github.com/Bara20/Extended-Logging/blob/master/addons/sourcemod/scripting/include/extended_logging.inc
+	-https://forums.alliedmods.net/showthread.php?t=247769
+*/
 #pragma semicolon 1
 
 #include <sourcemod>
 #include <store>
 
-#define PLUGIN_NAME_RESERVED_LENGTH 33
+enum ELOG_LEVEL
+{
+	DEFAULT = 0,
+	TRACE,
+	DEBUG,
+	INFO,
+	WARN,
+	ERROR
+}
 
-static Handle:g_log_file = INVALID_HANDLE;
-static const String:g_log_level_names[][] = { "     ", "ERROR", "WARN ", "INFO ", "DEBUG", "TRACE" };
-static Store_LogLevel:g_log_level = Store_LogLevelNone;
-static Store_LogLevel:g_log_flush_level = Store_LogLevelNone;
-static bool:g_log_errors_to_SM = false;
-static String:g_current_date[20];
+new String:g_sELogLevel[6][32] =
+{
+	"default",
+	"trace",
+	"debug",
+	"info",
+	"warn",
+	"error"
+};
+
+new String:sLoggingPath[PLATFORM_MAX_PATH];
+new String:sLoggingFilename[64];
+new String:sDateFormat[12];
+
+//Status of certain types of logs.
+new bool:bLog_Default = true, bool:bLog_Trace = true, bool:bLog_Debug = true, bool:bLog_Info = true, bool:bLog_Warn = true, bool:bLog_Error = true;
+
+//Status of certain types under subfolders.
+new bool:bFolder_Default = false, bool:bFolder_Trace = false, bool:bFolder_Debug = false, bool:bFolder_Info = false, bool:bFolder_Warn = false, bool:bFolder_Error = false;
 
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max) 
 {
-	CreateNative("Store_GetLogLevel", Store_GetLogLevel_);
-	CreateNative("Store_Log",         Store_Log_);
-	CreateNative("Store_LogError",    Store_LogError_);
-	CreateNative("Store_LogWarning",  Store_LogWarning_);
-	CreateNative("Store_LogInfo",     Store_LogInfo_);
-	CreateNative("Store_LogDebug",    Store_LogDebug_);
-	CreateNative("Store_LogTrace",    Store_LogTrace_);
-    
+	CreateNative("Store_Log", Native_Store_Log);
+	CreateNative("Store_LogTrace", Native_Store_LogTrace);
+	CreateNative("Store_LogDebug", Native_Store_LogDebug);
+	CreateNative("Store_LogInfo", Native_Store_LogInfo);
+	CreateNative("Store_LogWarning", Native_Store_LogWarning);
+	CreateNative("Store_LogError", Native_Store_LogError);
+	
 	RegPluginLibrary("store-logging");
-    
+	
 	return APLRes_Success;
 }
 
 public Plugin:myinfo =
 {
 	name        = "[Store] Logging",
-	author      = "alongub",
+	author      = "Keith Warren (Drixevel) & Bara20",
 	description = "Logging component for [Store]",
 	version     = STORE_VERSION,
 	url         = "https://github.com/alongubkin/store"
@@ -39,198 +64,194 @@ public Plugin:myinfo =
 public OnPluginStart() 
 {
 	LoadConfig();
-	FormatTime(g_current_date, sizeof(g_current_date), "%Y-%m-%d", GetTime());
-	CreateTimer(1.0, OnCheckDate, INVALID_HANDLE, TIMER_REPEAT);
-	if (g_log_level > Store_LogLevelNone)
-		CreateLogFileOrTurnOffLogging();
+	
+	RegServerCmd("sm_teststorelogging", TestStoreLogging);
 }
 
+public Action:TestStoreLogging(args)
+{
+	Store_Log("Logging type: Default - Format: %i", 1);
+	Store_LogTrace("Logging type: Trace - Format: %i", 1);
+	Store_LogDebug("Logging type: Debug - Format: %i", 1);
+	Store_LogInfo("Logging type: Info - Format: %i", 1);
+	Store_LogWarning("Logging type: Warning - Format: %i", 1);
+	Store_LogError("Logging type: Error - Format: %i", 1);
+	
+	PrintToServer("Test logs have been created.");
+	
+	return Plugin_Handled;
+}
+
+/**
+ * Load plugin config.
+ */
 LoadConfig() 
 {
-	new Handle:kv = CreateKeyValues("root");
-    
-	decl String:path[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, path, sizeof(path), "configs/store/logging.cfg");
-    
-	if (!FileToKeyValues(kv, path))
-    {
-		CloseHandle(kv);
-		SetFailState("Can't read config file %s", path);
+	new Handle:hKV = CreateKeyValues("root");
+	
+	new String:sPath[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, sPath, sizeof(sPath), "configs/store/logging.cfg");
+	
+	if (!FileToKeyValues(hKV, sPath)) 
+	{
+		CloseHandle(hKV);
+		SetFailState("Can't read config file %s", sPath);
 	}
 
-	g_log_level = Store_LogLevel:KvGetNum(kv, "log_level", 2);
-	g_log_flush_level = Store_LogLevel:KvGetNum(kv, "log_flush_level", 2);
-	g_log_errors_to_SM = (KvGetNum(kv, "log_errors_to_SM", 1) > 0);
-
-	CloseHandle(kv);
+	KvGetString(hKV, "logging_path", sLoggingPath, sizeof(sLoggingPath));
+	KvGetString(hKV, "logging_filename", sLoggingFilename, sizeof(sLoggingFilename));
+	KvGetString(hKV, "date_format", sDateFormat, sizeof(sDateFormat));
+	
+	if (KvJumpToKey(hKV, "Logging_types"))
+	{
+		bLog_Default = bool:KvGetNum(hKV, "default", 1);
+		bLog_Trace = bool:KvGetNum(hKV, "trace", 1);
+		bLog_Debug = bool:KvGetNum(hKV, "debug", 1);
+		bLog_Info = bool:KvGetNum(hKV, "info", 1);
+		bLog_Warn = bool:KvGetNum(hKV, "warn", 1);
+		bLog_Error = bool:KvGetNum(hKV, "error", 1);
+		
+		KvGoBack(hKV);
+	}
+	
+	new bool:bSubDirectories = bool:KvGetNum(hKV, "log_subfolders", 0);
+	
+	if (bSubDirectories && KvJumpToKey(hKV, "Logging_subfolders"))
+	{
+		bFolder_Default = bool:KvGetNum(hKV, "default", 0);
+		bFolder_Trace = bool:KvGetNum(hKV, "trace", 0);
+		bFolder_Debug = bool:KvGetNum(hKV, "debug", 0);
+		bFolder_Info = bool:KvGetNum(hKV, "info", 0);
+		bFolder_Warn = bool:KvGetNum(hKV, "warn", 0);
+		bFolder_Error = bool:KvGetNum(hKV, "error", 0);
+		
+		KvGoBack(hKV);
+	}
+	
+	CloseHandle(hKV);
 }
 
-public OnPluginEnd() 
+public Native_Store_Log(Handle:hPlugin, iParams) 
 {
-	if (g_log_file != INVALID_HANDLE)
-		CloseLogFile();
+	if (!bLog_Default) return;
+	
+	new String:sFormat[1024];
+	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
+	
+	new String:sDate[24];
+	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
+	
+	Log_File(sLoggingPath, sLoggingFilename, sDate, DEFAULT, bFolder_Default, sFormat);
 }
 
-public Action:OnCheckDate(Handle:timer)
+public Native_Store_LogTrace(Handle:hPlugin, iParams) 
 {
-	decl String:new_date[20];
-	FormatTime(new_date, sizeof(new_date), "%Y-%m-%d", GetTime());
-    
-	if (g_log_level > Store_LogLevelNone && !StrEqual(new_date, g_current_date)) 
-    {
-		strcopy(g_current_date, sizeof(g_current_date), new_date);
-        
-		if (g_log_file != INVALID_HANDLE) 
-        {
-			WriteMessageToLog(INVALID_HANDLE, Store_LogLevelInfo, "Date changed; switching log file", true);
-			CloseLogFile();
+	if (!bLog_Trace) return;
+	
+	new String:sFormat[1024];
+	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
+	
+	new String:sDate[24];
+	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
+	
+	Log_File(sLoggingPath, sLoggingFilename, sDate, TRACE, bFolder_Trace, sFormat);
+}
+
+public Native_Store_LogDebug(Handle:hPlugin, iParams) 
+{
+	if (!bLog_Debug) return;
+	
+	new String:sFormat[1024];
+	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
+	
+	new String:sDate[24];
+	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
+	
+	Log_File(sLoggingPath, sLoggingFilename, sDate, DEBUG, bFolder_Debug, sFormat);
+}
+
+public Native_Store_LogInfo(Handle:hPlugin, iParams) 
+{
+	if (!bLog_Info) return;
+	
+	new String:sFormat[1024];
+	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
+	
+	new String:sDate[24];
+	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
+	
+	Log_File(sLoggingPath, sLoggingFilename, sDate, INFO, bFolder_Info, sFormat);
+}
+
+public Native_Store_LogWarning(Handle:hPlugin, iParams) 
+{
+	if (!bLog_Warn) return;
+	
+	new String:sFormat[1024];
+	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
+	
+	new String:sDate[24];
+	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
+	
+	Log_File(sLoggingPath, sLoggingFilename, sDate, WARN, bFolder_Warn, sFormat);
+}
+
+public Native_Store_LogError(Handle:hPlugin, iParams) 
+{
+	if (!bLog_Error) return;
+	
+	new String:sFormat[1024];
+	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
+	
+	new String:sDate[24];
+	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
+	
+	Log_File(sLoggingPath, sLoggingFilename, sDate, ERROR, bFolder_Error, sFormat);
+}
+
+Log_File(const String:sPath[] = "", const String:sFile[] = "store", const String:sDate[] = "", ELOG_LEVEL:eLevel = DEFAULT, bool:bLogToFolder = false, const String:format[], any:...)
+{
+	new String:sPath_Build[PLATFORM_MAX_PATH + 1], String:sLevelPath[PLATFORM_MAX_PATH + 1], String:sFile_Build[PLATFORM_MAX_PATH + 1], String:sBuffer[1024];
+
+	if (strlen(sPath) != 0)
+	{
+		BuildPath(Path_SM, sPath_Build, sizeof(sPath_Build), "logs/%s", sPath);
+		
+		if(!DirExists(sPath_Build))
+		{
+			CreateDirectory(sPath_Build, 511);
 		}
-        
-		CreateLogFileOrTurnOffLogging();
 	}
-}
-
-CloseLogFile() 
-{
-	WriteMessageToLog(INVALID_HANDLE, Store_LogLevelInfo, "Logging stopped");
-	FlushFile(g_log_file);
-	CloseHandle(g_log_file);
-	g_log_file = INVALID_HANDLE;
-}
-
-bool:CreateLogFileOrTurnOffLogging()
-{
-	decl String:filename[128];
-	new pos = BuildPath(Path_SM, filename, sizeof(filename), "logs/");
-	FormatTime(filename[pos], sizeof(filename)-pos, "store_%Y-%m-%d.log", GetTime());
-    
-	if ((g_log_file = OpenFile(filename, "a")) == INVALID_HANDLE) 
-    {
-		g_log_level = Store_LogLevelNone;
-		LogError("Can't create store log file");
-		return false;
+	else
+	{
+		BuildPath(Path_SM, sPath_Build, sizeof(sPath_Build), "logs");
 	}
-	else 
-    {
-		WriteMessageToLog(INVALID_HANDLE, Store_LogLevelInfo, "Logging started", true);
-		return true;
+
+	if (bLogToFolder)
+	{
+		Format(sLevelPath, sizeof(sLevelPath), "%s/%s", sPath_Build, g_sELogLevel[eLevel]);
 	}
-}
-
-public Store_GetLogLevel_(Handle:plugin, num_params) 
-{
-	return _:g_log_level;
-}
-
-public Store_Log_(Handle:plugin, num_params) 
-{
-	new Store_LogLevel:log_level = Store_LogLevel:GetNativeCell(1);
-	if (g_log_level >= log_level) 
-    {
-		decl String:message[10000], written;
-		FormatNativeString(0, 2, 3, sizeof(message), written, message);
-        
-		if (g_log_file != INVALID_HANDLE)
-			WriteMessageToLog(plugin, log_level, message);
-            
-		if (log_level == Store_LogLevelError && g_log_errors_to_SM) 
-        {
-			ReplaceString(message, sizeof(message), "%", "%%");
-			LogError(message);
-		}
+	else
+	{
+		Format(sLevelPath, sizeof(sLevelPath), "%s", sPath_Build);
 	}
-}
 
-public Store_LogError_(Handle:plugin, num_params) 
-{
-	if (g_log_level >= Store_LogLevelError) 
-    {
-		decl String:message[10000], written;
-		FormatNativeString(0, 1, 2, sizeof(message), written, message);
-        
-		if (g_log_file != INVALID_HANDLE)
-        {
-			WriteMessageToLog(plugin, Store_LogLevelError, message);
-        }
-         
-		if (g_log_errors_to_SM) 
-        {
-			ReplaceString(message, sizeof(message), "%", "%%");
-			LogError(message);
-		}
+	
+	if (!DirExists(sLevelPath))
+	{
+		CreateDirectory(sLevelPath, 511);
 	}
-}
 
-public Store_LogWarning_(Handle:plugin, num_params) 
-{
-	if (g_log_level >= Store_LogLevelWarning && g_log_file != INVALID_HANDLE) 
-    {
-		decl String:message[10000], written;
-		FormatNativeString(0, 1, 2, sizeof(message), written, message);
-		WriteMessageToLog(plugin, Store_LogLevelWarning, message);
+	if (strlen(sDate) != 0)
+	{
+		Format(sFile_Build, sizeof(sFile_Build), "%s/%s_%s.log", sLevelPath, sFile, sDate);
 	}
-}
-
-public Store_LogInfo_(Handle:plugin, num_params) 
-{
-	if (g_log_level >= Store_LogLevelInfo && g_log_file != INVALID_HANDLE) 
-    {
-		decl String:message[10000], written;
-		FormatNativeString(0, 1, 2, sizeof(message), written, message);
-		WriteMessageToLog(plugin, Store_LogLevelInfo, message);
+	else
+	{
+		Format(sFile_Build, sizeof(sFile_Build), "%s/%s.log", sLevelPath, sFile);
 	}
-}
 
-public Store_LogDebug_(Handle:plugin, num_params) 
-{
-	if (g_log_level >= Store_LogLevelDebug && g_log_file != INVALID_HANDLE) 
-    {
-		decl String:message[10000], written;
-		FormatNativeString(0, 1, 2, sizeof(message), written, message);
-		WriteMessageToLog(plugin, Store_LogLevelDebug, message);
-	}
-}
-
-public Store_LogTrace_(Handle:plugin, num_params) 
-{
-	if (g_log_level >= Store_LogLevelTrace && g_log_file != INVALID_HANDLE) 
-    {
-		decl String:message[10000], written;
-		FormatNativeString(0, 1, 2, sizeof(message), written, message);
-		WriteMessageToLog(plugin, Store_LogLevelTrace, message);
-	}
-}
-
-WriteMessageToLog(Handle:plugin, Store_LogLevel:log_level, const String:message[], bool:force_flush=false) 
-{
-	decl String:log_line[10000];
-	PrepareLogLine(plugin, log_level, message, log_line);
-	WriteFileString(g_log_file, log_line, false);
-    
-	if (log_level <= g_log_flush_level || force_flush)
-		FlushFile(g_log_file);
-}
-
-PrepareLogLine(Handle:plugin, Store_LogLevel:log_level, const String:message[], String:log_line[10000]) 
-{
-	decl String:plugin_name[100];
-	GetPluginFilename(plugin, plugin_name, sizeof(plugin_name)-1);
-	// Make windows consistent with unix
-	ReplaceString(plugin_name, sizeof(plugin_name), "\\", "/");
-	new name_end = strlen(plugin_name);
-	plugin_name[name_end++] = ']';
-	for (new end=PLUGIN_NAME_RESERVED_LENGTH-1; name_end<end; ++name_end)
-		plugin_name[name_end] = ' ';
-	plugin_name[name_end++] = 0;
-	FormatTime(log_line, sizeof(log_line), "%Y-%m-%d %H:%M:%S [", GetTime());
-	new pos = strlen(log_line);
-	pos += strcopy(log_line[pos], sizeof(log_line)-pos, plugin_name);
-	log_line[pos++] = ' ';
-	pos += strcopy(log_line[pos], sizeof(log_line)-pos-5, g_log_level_names[log_level]);
-	log_line[pos++] = ' ';
-	log_line[pos++] = '|';
-	log_line[pos++] = ' ';
-	pos += strcopy(log_line[pos], sizeof(log_line)-pos-2, message);
-	log_line[pos++] = '\n';
-	log_line[pos++] = 0;
+	VFormat(sBuffer, sizeof(sBuffer), format, 7);
+	Format(sBuffer, sizeof(sBuffer), "[Store] %s", sBuffer);
+	LogToFileEx(sFile_Build, sBuffer);
 }

@@ -3,7 +3,7 @@
 #endif
 #define _store_core_included
 
-#define STORE_VERSION "1.2-beta fork3"
+#define STORE_VERSION "1.2.1"
 #define STORE_PREFIX "{GREEN}[Store] {DEFAULT}"
 #define STORE_PREFIX_NOCOLOR "[Store] "
 

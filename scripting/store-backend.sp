@@ -70,6 +70,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	CreateNative("Store_Register", Native_Register);
 	CreateNative("Store_RegisterClient", Native_RegisterClient);
+	CreateNative("Store_GetClientAccountID", Native_GetClientAccountID);
 
 	CreateNative("Store_GetCategories", Native_GetCategories);
 	CreateNative("Store_GetCategoryDisplayName", Native_GetCategoryDisplayName);
@@ -1733,6 +1734,19 @@ public Native_Register(Handle:plugin, params)
 public Native_RegisterClient(Handle:plugin, params)
 {
 	RegisterClient(GetNativeCell(1), GetNativeCell(2));
+}
+
+public Native_GetClientAccountID(Handle:plugin, params)
+{
+	new client = GetNativeCell(1);
+	new AccountID = GetSteamAccountID(client);
+	
+	if (AccountID == 0)
+	{
+		ThrowNativeError(SP_ERROR_INDEX, "Error retrieving client Steam Account ID %L.", client);
+	}
+	
+	return AccountID;
 }
 
 public Native_GetCategories(Handle:plugin, params)

@@ -86,11 +86,8 @@ LoadConfig()
 	Store_RegisterChatCommands(menuCommands, ChatCommand_OpenShop);
 
 	g_confirmItemPurchase = bool:KvGetNum(kv, "confirm_item_purchase", 0);
-
 	g_hideEmptyCategories = bool:KvGetNum(kv, "hide_empty_categories", 0);
-
 	g_hideCategoryDescriptions = bool:KvGetNum(kv, "hide_category_descriptions", 0);
-
 	g_allowBuyingDuplicates = bool:KvGetNum(kv, "allow_buying_duplicates", 0);
 
 	CloseHandle(kv);

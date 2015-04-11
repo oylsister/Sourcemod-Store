@@ -3,76 +3,77 @@
 #include <sourcemod>
 #include <store>
 
+#define PLUGIN_NAME "[Store] Shop Module"
+#define PLUGIN_DESCRIPTION "Shop module for the Sourcemod Store."
+#define PLUGIN_VERSION_CONVAR "store_shop_version"
+
 new String:g_currencyName[64];
 
 new bool:g_hideEmptyCategories = false;
 new bool:g_confirmItemPurchase = false;
 new bool:g_allowBuyingDuplicates = false;
 new bool:g_hideCategoryDescriptions = false;
+new bool:g_equipAfterPurchase = false;
+
+new String:sPriority_Categories[256];
+new String:sPriority_Items[256];
 
 new Handle:g_buyItemForward;
 new Handle:g_buyItemPostForward;
 
-/**
- * Called before plugin is loaded.
- *
- * @param myself    The plugin handle.
- * @param late      True if the plugin was loaded after map change, false on map start.
- * @param error     Error message if load failed.
- * @param err_max   Max length of the error message.
- *
- * @return          APLRes_Success for load success, APLRes_Failure or APLRes_SilentFailure otherwise.
- */
+new Handle:categories_menu[MAXPLAYERS+1];
+
+public Plugin:myinfo =
+{
+	name = PLUGIN_NAME,
+	author = STORE_AUTHORS,
+	description = PLUGIN_DESCRIPTION,
+	version = STORE_VERSION,
+	url = STORE_URL
+};
+
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	CreateNative("Store_OpenShop", Native_OpenShop);
 	CreateNative("Store_OpenShopCategory", Native_OpenShopCategory);
+	
+	g_buyItemForward = CreateGlobalForward("Store_OnBuyItem", ET_Event, Param_Cell, Param_Cell);
+	g_buyItemPostForward = CreateGlobalForward("Store_OnBuyItem_Post", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
 
 	RegPluginLibrary("store-shop");
 	return APLRes_Success;
 }
 
-public Plugin:myinfo =
-{
-	name        = "[Store] Shop",
-	author      = "alongub",
-	description = "Shop component for [Store]",
-	version     = STORE_VERSION,
-	url         = "https://github.com/alongubkin/store"
-};
-
-/**
- * Plugin is loading.
- */
 public OnPluginStart()
 {
-	LoadConfig();
-
-	g_buyItemForward = CreateGlobalForward("Store_OnBuyItem", ET_Event, Param_Cell, Param_Cell);
-	g_buyItemPostForward = CreateGlobalForward("Store_OnBuyItem_Post", ET_Ignore, Param_Cell, Param_Cell, Param_Cell);
-
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
+	
+	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
+	
+	LoadConfig();
+}
 
+public Store_OnCoreLoaded()
+{
 	Store_AddMainMenuItem("Shop", "Shop Description", _, OnMainMenuShopClick, 2);
 }
 
-/**
- * Configs just finished getting executed.
- */
 public OnConfigsExecuted()
 {
 	Store_GetCurrencyName(g_currencyName, sizeof(g_currencyName));
 }
 
-/**
- * Load plugin config.
- */
+public Store_OnDatabaseInitialized()
+{
+	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
+}
+
 LoadConfig()
 {
 	new Handle:kv = CreateKeyValues("root");
 
-	decl String:path[PLATFORM_MAX_PATH];
+	new String:path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/shop.cfg");
 
 	if (!FileToKeyValues(kv, path))
@@ -81,7 +82,7 @@ LoadConfig()
 		SetFailState("Can't read config file %s", path);
 	}
 
-	decl String:menuCommands[255];
+	new String:menuCommands[255];
 	KvGetString(kv, "shop_commands", menuCommands, sizeof(menuCommands), "!shop /shop");
 	Store_RegisterChatCommands(menuCommands, ChatCommand_OpenShop);
 
@@ -89,8 +90,51 @@ LoadConfig()
 	g_hideEmptyCategories = bool:KvGetNum(kv, "hide_empty_categories", 0);
 	g_hideCategoryDescriptions = bool:KvGetNum(kv, "hide_category_descriptions", 0);
 	g_allowBuyingDuplicates = bool:KvGetNum(kv, "allow_buying_duplicates", 0);
+	g_equipAfterPurchase = bool:KvGetNum(kv, "equip_after_purchase", 1);
+	
+	if (KvJumpToKey(kv, "Menu Sorting"))
+	{
+		if (KvJumpToKey(kv, "Categories") && KvGotoFirstSubKey(kv, false))
+		{
+			CreatePriorityString(kv, sPriority_Categories, sizeof(sPriority_Categories));
+			KvGoBack(kv);
+		}
+		
+		if (KvJumpToKey(kv, "Items") && KvGotoFirstSubKey(kv, false))
+		{
+			CreatePriorityString(kv, sPriority_Items, sizeof(sPriority_Items));
+			KvGoBack(kv);
+		}
+		
+		KvGoBack(kv);
+	}
 
 	CloseHandle(kv);
+	
+	Store_AddMainMenuItem("Shop", "Shop Description", _, OnMainMenuShopClick, 2);
+}
+
+CreatePriorityString(Handle:hKV, String:sPriority[], maxsize)
+{
+	Format(sPriority, maxsize, "ORDER BY ");
+	
+	do {
+		new String:sName[256];
+		KvGetSectionName(hKV, sName, sizeof(sName));
+		
+		new String:sValue[256];
+		KvGetString(hKV, NULL_STRING, sValue, sizeof(sValue));
+		
+		new String:sSource[256];
+		Format(sSource, sizeof(sSource), "%s %s, ", sValue, sName);
+		
+		StrCat(sPriority, maxsize, sSource);
+		
+	} while (KvGotoNextKey(hKV, false));
+	KvGoBack(hKV);
+	
+	Format(sPriority, maxsize, "%s;", sPriority);
+	ReplaceString(sPriority, maxsize, ", ;", ";");
 }
 
 public OnMainMenuShopClick(client, const String:value[])
@@ -103,38 +147,44 @@ public ChatCommand_OpenShop(client)
 	OpenShop(client);
 }
 
-/**
- * Opens the shop menu for a client.
- *
- * @param client			Client index.
- *
- * @noreturn
- */
 OpenShop(client)
 {
-	Store_GetCategories(GetCategoriesCallback, true, GetClientSerial(client));
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client) || categories_menu[client] != INVALID_HANDLE)
+	{
+		return;
+	}
+	
+	Store_GetCategories(GetCategoriesCallback, true, sPriority_Categories, GetClientSerial(client));
 }
-
-new Handle:categories_menu[MAXPLAYERS+1];
 
 public GetCategoriesCallback(ids[], count, any:serial)
 {
 	new client = GetClientFromSerial(serial);
-
+	
 	if (client == 0)
+	{
 		return;
-
+	}
+		
+	if (count < 1)
+	{
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
+		return;
+	}
+	
 	categories_menu[client] = CreateMenu(ShopMenuSelectHandle);
 	SetMenuTitle(categories_menu[client], "%T\n \n", "Shop", client);
-
-	new amount = 0;
+	
+	new bool:bNoCategories = true;
 	for (new category = 0; category < count; category++)
 	{
-		decl String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
+		new String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
 		Store_GetCategoryPluginRequired(ids[category], requiredPlugin, sizeof(requiredPlugin));
 
 		if (!StrEqual(requiredPlugin, "") && !Store_IsItemTypeRegistered(requiredPlugin))
+		{
 			continue;
+		}
 
 		new Handle:pack = CreateDataPack();
 		WritePackCell(pack, GetClientSerial(client));
@@ -146,11 +196,11 @@ public GetCategoriesCallback(ids[], count, any:serial)
 		SetTrieValue(filter, "category_id", ids[category]);
 		SetTrieValue(filter, "flags", GetUserFlagBits(client));
 
-		Store_GetItems(filter, GetItemsForCategoryCallback, true, pack);
-		amount++;
+		Store_GetItems(filter, GetItemsForCategoryCallback, true, sPriority_Items, pack);
+		bNoCategories = false;
 	}
-
-	if (amount < 1)
+	
+	if (bNoCategories)
 	{
 		CPrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
 	}
@@ -167,28 +217,27 @@ public GetItemsForCategoryCallback(ids[], count, any:pack)
 	CloseHandle(pack);
 
 	new client = GetClientFromSerial(serial);
-
+	
 	if (client == 0)
+	{
 		return;
+	}
 
-
-	// Display this category if "hide_empty_categories"
-	// is disabled or if it has items.
 	if (!g_hideEmptyCategories || count > 0)
 	{
-		decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetCategoryDisplayName(categoryId, displayName, sizeof(displayName));
 
 		if (!g_hideCategoryDescriptions)
 		{
-			decl String:description[STORE_MAX_DESCRIPTION_LENGTH];
+			new String:description[STORE_MAX_DESCRIPTION_LENGTH];
 			Store_GetCategoryDescription(categoryId, description, sizeof(description));
 
-			decl String:itemText[sizeof(displayName) + 1 + sizeof(description)];
+			new String:itemText[sizeof(displayName) + 1 + sizeof(description)];
 			Format(itemText, sizeof(itemText), "%s\n%s", displayName, description);
 		}
 
-		decl String:itemValue[8];
+		new String:itemValue[8];
 		IntToString(categoryId, itemValue, sizeof(itemValue));
 
 		AddMenuItem(categories_menu[client], itemValue, displayName);
@@ -203,34 +252,25 @@ public GetItemsForCategoryCallback(ids[], count, any:pack)
 
 public ShopMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 {
-	if (action == MenuAction_Select)
+	switch (action)
 	{
-		new String:categoryIndex[64];
-
-		if (GetMenuItem(menu, slot, categoryIndex, sizeof(categoryIndex)))
-			OpenShopCategory(client, StringToInt(categoryIndex));
-	}
-	else if (action == MenuAction_Cancel)
-	{
-		if (slot == MenuCancel_ExitBack)
-		{
-			Store_OpenMainMenu(client);
-		}
-	}
-	else if (action == MenuAction_End)
-	{
-		CloseHandle(menu);
+		case MenuAction_Select:
+			{
+				new String:sMenuItem[64];
+				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
+				OpenShopCategory(client, StringToInt(sMenuItem));
+			}
+		case MenuAction_Cancel:
+			{
+				if (slot == MenuCancel_ExitBack)
+				{
+					Store_OpenMainMenu(client);
+				}
+			}
+		case MenuAction_End: CloseHandle(menu);
 	}
 }
 
-/**
- * Opens the shop menu for a client in a specific category.
- *
- * @param client			Client index.
- * @param categoryId		The category that you want to open.
- *
- * @noreturn
- */
 OpenShopCategory(client, categoryId)
 {
 	new Handle:pack = CreateDataPack();
@@ -242,7 +282,7 @@ OpenShopCategory(client, categoryId)
 	SetTrieValue(filter, "category_id", categoryId);
 	SetTrieValue(filter, "flags", GetUserFlagBits(client));
 
-	Store_GetItems(filter, GetItemsCallback, true, pack);
+	Store_GetItems(filter, GetItemsCallback, true, sPriority_Items, pack);
 }
 
 public GetItemsCallback(ids[], count, any:pack)
@@ -257,8 +297,10 @@ public GetItemsCallback(ids[], count, any:pack)
 	new client = GetClientFromSerial(serial);
 
 	if (client == 0)
+	{
 		return;
-
+	}
+	
 	if (count == 0)
 	{
 		CPrintToChat(client, "%s%t", STORE_PREFIX, "No items in this category");
@@ -267,7 +309,7 @@ public GetItemsCallback(ids[], count, any:pack)
 		return;
 	}
 
-	decl String:categoryDisplayName[64];
+	new String:categoryDisplayName[64];
 	Store_GetCategoryDisplayName(categoryId, categoryDisplayName, sizeof(categoryDisplayName));
 
 	new Handle:menu = CreateMenu(ShopCategoryMenuSelectHandle);
@@ -275,20 +317,23 @@ public GetItemsCallback(ids[], count, any:pack)
 
 	for (new item = 0; item < count; item++)
 	{
-		decl String:displayName[64];
-		decl String:description[128];
-		decl String:text[sizeof(displayName) + sizeof(description) + 5];
+		new String:displayName[64];
+		new String:description[128];
+		new String:text[sizeof(displayName) + sizeof(description) + 5];
 
 		Store_GetItemDisplayName(ids[item], displayName, sizeof(displayName));
 
-		if(g_hideCategoryDescriptions==false){
+		if (!g_hideCategoryDescriptions)
+		{
 			Store_GetItemDescription(ids[item], description, sizeof(description));
 			Format(text, sizeof(text), "%s [%d %s]\n%s", displayName, Store_GetItemPrice(ids[item]), g_currencyName, description);
-		} else {
+		}
+		else
+		{
 			Format(text, sizeof(text), "%s [%d %s]", displayName, Store_GetItemPrice(ids[item]), g_currencyName);
 		}
 
-		decl String:value[8];
+		new String:value[8];
 		IntToString(ids[item], value, sizeof(value));
 
 		AddMenuItem(menu, value, text);
@@ -300,26 +345,20 @@ public GetItemsCallback(ids[], count, any:pack)
 
 public ShopCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 {
-	if (action == MenuAction_Select)
+	switch (action)
 	{
-		new String:value[12];
-
-		if (GetMenuItem(menu, slot, value, sizeof(value)))
-		{
-			DoBuyItem(client, StringToInt(value));
-		}
-	}
-	else if (action == MenuAction_Cancel)
-	{
-		OpenShop(client);
-	}
-	else if (action == MenuAction_End)
-	{
-		CloseHandle(menu);
+		case MenuAction_Select:
+			{
+				new String:sMenuItem[64];
+				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
+				DoBuyItem(client, StringToInt(sMenuItem));
+			}
+		case MenuAction_Cancel: OpenShop(client);
+		case MenuAction_End: CloseHandle(menu);
 	}
 }
 
-DoBuyItem(client, itemId, bool:confirmed=false, bool:checkeddupes=false)
+DoBuyItem(client, itemId, bool:confirmed = false, bool:checkeddupes = false)
 {
 	if (g_confirmItemPurchase && !confirmed)
 	{
@@ -327,7 +366,7 @@ DoBuyItem(client, itemId, bool:confirmed=false, bool:checkeddupes=false)
 	}
 	else if (!g_allowBuyingDuplicates && !checkeddupes)
 	{
-		decl String:itemName[STORE_MAX_NAME_LENGTH];
+		new String:itemName[STORE_MAX_NAME_LENGTH];
 		Store_GetItemName(itemId, itemName, sizeof(itemName));
 
 		new Handle:pack = CreateDataPack();
@@ -347,7 +386,6 @@ DoBuyItem(client, itemId, bool:confirmed=false, bool:checkeddupes=false)
 
 		if (result == Plugin_Handled || result == Plugin_Stop)
 		{
-			// handled or stopped
 			return;
 		}
 
@@ -364,15 +402,14 @@ public DoBuyItem_ItemCountCallBack(count, any:pack)
 	ResetPack(pack);
 
 	new client = GetClientFromSerial(ReadPackCell(pack));
-	if (client == 0)
-	{
-		CloseHandle(pack);
-		return;
-	}
-
 	new itemId = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (!client)
+	{
+		return;
+	}
 
 	if (count <= 0)
 	{
@@ -380,7 +417,7 @@ public DoBuyItem_ItemCountCallBack(count, any:pack)
 	}
 	else
 	{
-		decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
 		CPrintToChat(client, "%s%t", STORE_PREFIX, "Already purchased item", displayName);
 	}
@@ -388,13 +425,13 @@ public DoBuyItem_ItemCountCallBack(count, any:pack)
 
 DisplayConfirmationMenu(client, itemId)
 {
-	decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+	new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 	Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
 
 	new Handle:menu = CreateMenu(ConfirmationMenuSelectHandle);
 	SetMenuTitle(menu, "%T", "Item Purchase Confirmation", client,  displayName);
 
-	decl String:value[8];
+	new String:value[8];
 	IntToString(itemId, value, sizeof(value));
 
 	AddMenuItem(menu, value, "Yes");
@@ -406,38 +443,34 @@ DisplayConfirmationMenu(client, itemId)
 
 public ConfirmationMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 {
-	if (action == MenuAction_Select)
+	switch (action)
 	{
-		new String:value[12];
-		if (GetMenuItem(menu, slot, value, sizeof(value)))
-		{
-			if (StrEqual(value, "no"))
+		case MenuAction_Select:
 			{
-				OpenShop(client);
+				new String:sMenuItem[64];
+				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
+				
+				if (StrEqual(sMenuItem, "no"))
+				{
+					OpenShop(client);
+				}
+				else
+				{
+					DoBuyItem(client, StringToInt(sMenuItem), true);
+				}
 			}
-			else
+		case MenuAction_DisplayItem:
 			{
-				DoBuyItem(client, StringToInt(value), true);
+				new String:sDisplay[64];
+				GetMenuItem(menu, slot, "", 0, _, sDisplay, sizeof(sDisplay));
+
+				new String:buffer[255];
+				Format(buffer, sizeof(buffer), "%T", sDisplay, client);
+
+				return RedrawMenuItem(buffer);
 			}
-		}
-	}
-	else if (action == MenuAction_Cancel)
-	{
-		OpenShop(client);
-	}
-	else if (action == MenuAction_DisplayItem)
-	{
-		decl String:display[64];
-		GetMenuItem(menu, slot, "", 0, _, display, sizeof(display));
-
-		decl String:buffer[255];
-		Format(buffer, sizeof(buffer), "%T", display, client);
-
-		return RedrawMenuItem(buffer);
-	}
-	else if (action == MenuAction_End)
-	{
-		CloseHandle(menu);
+		case MenuAction_Cancel: OpenShop(client);
+		case MenuAction_End: CloseHandle(menu);
 	}
 
 	return false;
@@ -448,29 +481,42 @@ public OnBuyItemComplete(bool:success, any:pack)
 	ResetPack(pack);
 
 	new client = GetClientFromSerial(ReadPackCell(pack));
-	if (client == 0)
-	{
-		CloseHandle(pack);
-		return;
-	}
-
 	new itemId = ReadPackCell(pack);
 
 	CloseHandle(pack);
-
-	if (success)
+	
+	if (!client)
 	{
-		decl String:displayName[64];
-		Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
-
-		CPrintToChat(client, "%s%t", STORE_PREFIX, "Item Purchase Successful", displayName);
+		return;
 	}
-	else
+
+	if (!success)
 	{
 		CPrintToChat(client, "%s%t", STORE_PREFIX, "Not enough credits to buy", g_currencyName);
+		return;
 	}
-
-	OpenShop(client);
+		
+	new String:displayName[64];
+	Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
+	CPrintToChat(client, "%s%t", STORE_PREFIX, "Item Purchase Successful", displayName);
+	
+	if (g_equipAfterPurchase)
+	{
+		new Handle:hMenu = CreateMenu(EquipAfterPurchaseMenuHandle);
+		SetMenuTitle(hMenu, "%t", "Item Purchase Menu Title", displayName);
+		
+		new String:sItemID[64];
+		IntToString(itemId, sItemID, sizeof(sItemID));
+		
+		AddMenuItem(hMenu, sItemID, "Yes");
+		AddMenuItem(hMenu, "", "No");
+		
+		DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
+	}
+	else
+	{	
+		OpenShop(client);
+	}
 
 	Call_StartForward(g_buyItemPostForward);
 	Call_PushCell(client);
@@ -478,6 +524,35 @@ public OnBuyItemComplete(bool:success, any:pack)
 	Call_PushCell(success);
 	Call_Finish();
 }
+
+public EquipAfterPurchaseMenuHandle(Handle:menu, MenuAction:action, client, slot)
+{
+	switch (action)
+	{
+		case MenuAction_Select:
+			{
+				new String:sMenuItem[64], String:sDisplay[64];
+				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem), _, sDisplay, sizeof(sDisplay));
+				
+				if (StrEqual(sDisplay, "Yes"))
+				{
+					new loadout = Store_GetClientLoadout(client);
+					new itemId = StringToInt(sMenuItem);
+					Store_SetItemEquippedState(GetSteamAccountID(client), itemId, loadout, true, EquipItemCallback);
+					
+					new String:displayName[64];
+					Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
+					
+					CPrintToChat(client, "%s%t", STORE_PREFIX, "Item Purchase Equipped", displayName, loadout);
+				}
+				
+				OpenShop(client);
+			}
+		case MenuAction_End: CloseHandle(menu);
+	}
+}
+
+public EquipItemCallback(accountId, itemId, loadoutId, any:data) {}
 
 public Native_OpenShop(Handle:plugin, params)
 {

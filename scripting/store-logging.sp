@@ -8,6 +8,10 @@
 #include <sourcemod>
 #include <store>
 
+#define PLUGIN_NAME "[Store] Logging Module"
+#define PLUGIN_DESCRIPTION "Logging module for the Sourcemod Store."
+#define PLUGIN_VERSION_CONVAR "store_logging_version"
+
 enum ELOG_LEVEL
 {
 	DEFAULT = 0,
@@ -38,6 +42,15 @@ new bool:bLog_Default = true, bool:bLog_Trace = true, bool:bLog_Debug = true, bo
 //Status of certain types under subfolders.
 new bool:bFolder_Default = false, bool:bFolder_Trace = false, bool:bFolder_Debug = false, bool:bFolder_Info = false, bool:bFolder_Warn = false, bool:bFolder_Error = false;
 
+public Plugin:myinfo =
+{
+	name = PLUGIN_NAME,
+	author = STORE_AUTHORS,
+	description = PLUGIN_DESCRIPTION,
+	version = STORE_VERSION,
+	url = STORE_URL
+};
+
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max) 
 {
 	CreateNative("Store_Log", Native_Store_Log);
@@ -52,20 +65,18 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	return APLRes_Success;
 }
 
-public Plugin:myinfo =
-{
-	name        = "[Store] Logging",
-	author      = "Keith Warren (Drixevel) & Bara20",
-	description = "Logging component for [Store]",
-	version     = STORE_VERSION,
-	url         = "https://github.com/alongubkin/store"
-};
-
 public OnPluginStart() 
 {
+	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
+	
 	LoadConfig();
 	
 	RegServerCmd("sm_teststorelogging", TestStoreLogging);
+}
+
+public Store_OnDatabaseInitialized()
+{
+	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
 public Action:TestStoreLogging(args)
@@ -82,9 +93,6 @@ public Action:TestStoreLogging(args)
 	return Plugin_Handled;
 }
 
-/**
- * Load plugin config.
- */
 LoadConfig() 
 {
 	new Handle:hKV = CreateKeyValues("root");
@@ -127,7 +135,7 @@ LoadConfig()
 		
 		KvGoBack(hKV);
 	}
-	
+		
 	CloseHandle(hKV);
 }
 

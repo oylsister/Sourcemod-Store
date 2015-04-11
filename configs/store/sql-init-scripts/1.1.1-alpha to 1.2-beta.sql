@@ -1,1 +1,0 @@
-ALTER TABLE `store_items` ADD `flags` varchar(11) DEFAULT NULL;

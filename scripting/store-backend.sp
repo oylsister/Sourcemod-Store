@@ -3,13 +3,19 @@
 #include <sourcemod>
 #include <store>
 
+#define PLUGIN_NAME "[Store] Backend Module"
+#define PLUGIN_DESCRIPTION "Backend module for the Sourcemod Store."
+#define PLUGIN_VERSION_CONVAR "store_backend_version"
+
 #define MAX_CATEGORIES	32
 #define MAX_ITEMS 		1024
 #define MAX_LOADOUTS	32
+#define MAX_QUERY_SIZES	2048
 
 enum Category
 {
 	CategoryId,
+	CategoryPriority,
 	String:CategoryDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH],
 	String:CategoryDescription[STORE_MAX_DESCRIPTION_LENGTH],
 	String:CategoryRequirePlugin[STORE_MAX_REQUIREPLUGIN_LENGTH]
@@ -18,6 +24,7 @@ enum Category
 enum Item
 {
 	ItemId,
+	ItemPriority,
 	String:ItemName[STORE_MAX_NAME_LENGTH],
 	String:ItemDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH],
 	String:ItemDescription[STORE_MAX_DESCRIPTION_LENGTH],
@@ -56,16 +63,15 @@ new g_itemCount = -1;
 new g_loadouts[MAX_LOADOUTS][Loadout];
 new g_loadoutCount = -1;
 
-/**
- * Called before plugin is loaded.
- *
- * @param myself    The plugin handle.
- * @param late      True if the plugin was loaded after map change, false on map start.
- * @param error     Error message if load failed.
- * @param err_max   Max length of the error message.
- *
- * @return          APLRes_Success for load success, APLRes_Failure or APLRes_SilentFailure otherwise.
- */
+public Plugin:myinfo =
+{
+	name = PLUGIN_NAME,
+	author = STORE_AUTHORS,
+	description = PLUGIN_DESCRIPTION,
+	version = STORE_VERSION,
+	url = STORE_URL
+};
+
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	CreateNative("Store_Register", Native_Register);
@@ -73,11 +79,13 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("Store_GetClientAccountID", Native_GetClientAccountID);
 
 	CreateNative("Store_GetCategories", Native_GetCategories);
+	CreateNative("Store_GetCategoryPriority", Native_GetCategoryPriority);
 	CreateNative("Store_GetCategoryDisplayName", Native_GetCategoryDisplayName);
 	CreateNative("Store_GetCategoryDescription", Native_GetCategoryDescription);
 	CreateNative("Store_GetCategoryPluginRequired", Native_GetCategoryPluginRequired);
 
 	CreateNative("Store_GetItems", Native_GetItems);
+	CreateNative("Store_GetItemPriority", Native_GetItemPriority);
 	CreateNative("Store_GetItemName", Native_GetItemName);
 	CreateNative("Store_GetItemDisplayName", Native_GetItemDisplayName);
 	CreateNative("Store_GetItemDescription", Native_GetItemDescription);
@@ -100,11 +108,14 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("Store_GetUserItems", Native_GetUserItems);
 	CreateNative("Store_GetUserItemCount", Native_GetUserItemCount);
 	CreateNative("Store_GetCredits", Native_GetCredits);
+	CreateNative("Store_GetCreditsEx", Native_GetCreditsEx);
 
 	CreateNative("Store_GiveCredits", Native_GiveCredits);
 	CreateNative("Store_GiveCreditsToUsers", Native_GiveCreditsToUsers);
 	CreateNative("Store_GiveDifferentCreditsToUsers", Native_GiveDifferentCreditsToUsers);
 	CreateNative("Store_GiveItem", Native_GiveItem);
+	
+	CreateNative("Store_RemoveCredits", Native_RemoveCredits);
 
 	CreateNative("Store_BuyItem", Native_BuyItem);
 	CreateNative("Store_RemoveUserItem", Native_RemoveUserItem);
@@ -113,31 +124,24 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("Store_GetEquippedItemsByType", Native_GetEquippedItemsByType);
 
 	CreateNative("Store_ReloadItemCache", Native_ReloadItemCache);
+	CreateNative("Store_RegisterPluginModule", Native_RegisterPluginModule);
+	
+	CreateNative("Store_SQLTQuery", Native_SQLTQuery);
+	
+	g_dbInitializedForward = CreateGlobalForward("Store_OnDatabaseInitialized", ET_Event);
+	g_reloadItemsForward = CreateGlobalForward("Store_OnReloadItems", ET_Event);
+	g_reloadItemsPostForward = CreateGlobalForward("Store_OnReloadItemsPost", ET_Event);
 
 	RegPluginLibrary("store-backend");
 	return APLRes_Success;
 }
 
-public Plugin:myinfo =
-{
-	name        = "[Store] Backend",
-	author      = "alongub",
-	description = "Backend component for [Store]",
-	version     = STORE_VERSION,
-	url         = "https://github.com/alongubkin/store"
-};
-
-/**
- * Plugin is loading.
- */
 public OnPluginStart()
 {
+	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
+	
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
-	
-	g_dbInitializedForward = CreateGlobalForward("Store_OnDatabaseInitialized", ET_Event);
-	g_reloadItemsForward = CreateGlobalForward("Store_OnReloadItems", ET_Event);
-	g_reloadItemsPostForward = CreateGlobalForward("Store_OnReloadItemsPost", ET_Event);
 
 	RegAdminCmd("store_reloaditems", Command_ReloadItems, ADMFLAG_RCON, "Reloads store item cache.");
 	RegAdminCmd("sm_store_reloaditems", Command_ReloadItems, ADMFLAG_RCON, "Reloads store item cache.");
@@ -156,61 +160,24 @@ public OnMapStart()
 	}
 }
 
-/**
- * Registers a player in the database:
- *
- * - If the player is already in the database, his name will be updated according
- *   to the 'name' parameter provided.
- *
- * - If the player is not in the database (for example, a new player who just joined
- *   the server for the first time), he will be added using the account ID and name
- *   provided.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param name          The name of the player.
- * @param credits 		The amount of credits to give to the player if it's his first register.
- *
- * @noreturn
- */
 Register(accountId, const String:name[] = "", credits = 0)
 {
-	decl String:safeName[2 * 32 + 1];
+	new String:safeName[2 * 32 + 1];
 	SQL_EscapeString(g_hSQL, name, safeName, sizeof(safeName));
 
-	decl String:query[255];
-	Format(query, sizeof(query), "INSERT INTO store_users (auth, name, credits) VALUES (%d, '%s', %d) ON DUPLICATE KEY UPDATE name = '%s';", accountId, safeName, credits, safeName);
-
-	SQL_TQuery(g_hSQL, T_RegisterCallback, query, _, DBPrio_High);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "INSERT INTO store_users (auth, name, credits) VALUES (%d, '%s', %d) ON DUPLICATE KEY UPDATE name = '%s';", accountId, safeName, credits, safeName);
+	SQL_TQuery(g_hSQL, T_RegisterCallback, sQuery, _, DBPrio_High);
 }
 
-/**
- * Registers a player in the database, provided his client index only.
- *
- * This method converts the client index provided to an account id, retrieves
- * the player's name, and calls Store_Register using that information.
- *
- * The logic of registering a player is explained in the Store_Register documentation.
- *
- * The store-core module calls this method every time a player joins the server.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param client 		Client index.
- * @param credits 		The amount of credits to give to the player if it's his first register.
- *
- * @noreturn
- */
 RegisterClient(client, credits = 0)
 {
-	if (!IsClientInGame(client))
+	if (!IsClientInGame(client) || IsFakeClient(client))
+	{
 		return;
-
-	if (IsFakeClient(client))
-		return;
-
-	decl String:name[64];
+	}
+		
+	new String:name[64];
 	GetClientName(client, name, sizeof(name));
 
 	Register(GetSteamAccountID(client), name, credits);
@@ -221,45 +188,17 @@ public T_RegisterCallback(Handle:owner, Handle:hndl, const String:error[], any:d
 	if (hndl == INVALID_HANDLE)
 	{
 		Store_LogError("SQL Error on Register: %s", error);
-		return;
 	}
 }
 
-/**
- * Retrieves all item categories from the database.
- *
- * The store-backend module builds a cache of the categories retrieved the first time
- * this method is called, for faster access the next time it's called.
- *
- * You can set the loadFromCache parameter of this method to false to retrieve categories
- * from the database and not from the cache.
- *
- * The store-core module calls this method when it is loaded to build a cache of
- * categories.
- *
- * It also provides the store_reloaditems command to reload items and categories
- * from the database.
- *
- * To use this method, you can provide a callback for when the categories are loaded.
- * The callback will provide an array of the categories' IDs. You can then loop the array,
- * and find info about each category using the Store_GetCategory* methods.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param callback 		A callback which will be called when the categories are loaded.
- * @param plugin		The plugin owner of the callback.
- * @param loadFromCache	Whether to load categories from cache. If false, the method will
- * 						query the database and rebuild its cache.
- * @param data 			Extra data value to pass to the callback.
- *
- * @noreturn
- */
-GetCategories(client, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
+GetCategories(client, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, String:sPriority[], any:data = 0)
 {
 	if (loadFromCache && g_categoryCount != -1)
 	{
-		if (callback == INVALID_FUNCTION || callback == Function:0)
+		if (callback == INVALID_FUNCTION)
+		{
 			return;
+		}
 
 		new categories[g_categoryCount];
 		new count = 0;
@@ -275,6 +214,11 @@ GetCategories(client, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle
 		Call_PushCell(count);
 		Call_PushCell(data);
 		Call_Finish();
+		
+		new String:sName[MAX_NAME_LENGTH];
+		if (client > 0) GetClientName(client, sName, sizeof(sName));
+		
+		Store_LogDebug("Categories Pulled for '%s': Count = %i - LoadFromCache: %s - Priority String: %s", strlen(sName) != 0 ? sName: "Console", count, loadFromCache ? "True" : "False", strlen(sPriority) != 0 ? sPriority : "N/A");
 	}
 	else
 	{
@@ -282,11 +226,16 @@ GetCategories(client, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle
 		WritePackFunction(pack, callback);
 		WritePackCell(pack, _:plugin);
 		WritePackCell(pack, _:data);
-
-		SQL_TQuery(g_hSQL, T_GetCategoriesCallback, "SELECT id, display_name, description, require_plugin FROM store_categories", pack);
+		
+		new String:sQuery[MAX_QUERY_SIZES];
+		Format(sQuery, sizeof(sQuery), "SELECT id, priority, display_name, description, require_plugin FROM store_categories %s", sPriority);
+		SQL_TQuery(g_hSQL, T_GetCategoriesCallback, sQuery, pack);
 	}
 	
-	if (client != -1) CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded categories");
+	if (client != -1)
+	{
+		CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded categories");
+	}
 }
 
 public T_GetCategoriesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
@@ -312,14 +261,15 @@ public T_GetCategoriesCallback(Handle:owner, Handle:hndl, const String:error[], 
 	while (SQL_FetchRow(hndl))
 	{
 		g_categories[g_categoryCount][CategoryId] = SQL_FetchInt(hndl, 0);
-		SQL_FetchString(hndl, 1, g_categories[g_categoryCount][CategoryDisplayName], STORE_MAX_DISPLAY_NAME_LENGTH);
-		SQL_FetchString(hndl, 2, g_categories[g_categoryCount][CategoryDescription], STORE_MAX_DESCRIPTION_LENGTH);
-		SQL_FetchString(hndl, 3, g_categories[g_categoryCount][CategoryRequirePlugin], STORE_MAX_REQUIREPLUGIN_LENGTH);
+		g_categories[g_categoryCount][CategoryPriority] = SQL_FetchInt(hndl, 1);
+		SQL_FetchString(hndl, 2, g_categories[g_categoryCount][CategoryDisplayName], STORE_MAX_DISPLAY_NAME_LENGTH);
+		SQL_FetchString(hndl, 3, g_categories[g_categoryCount][CategoryDescription], STORE_MAX_DESCRIPTION_LENGTH);
+		SQL_FetchString(hndl, 4, g_categories[g_categoryCount][CategoryRequirePlugin], STORE_MAX_REQUIREPLUGIN_LENGTH);
 
 		g_categoryCount++;
 	}
 
-	GetCategories(-1, callback, plugin, true, arg);
+	GetCategories(-1, callback, plugin, true, "", arg);
 }
 
 GetCategoryIndex(id)
@@ -327,59 +277,23 @@ GetCategoryIndex(id)
 	for (new index = 0; index < g_categoryCount; index++)
 	{
 		if (g_categories[index][CategoryId] == id)
+		{
 			return index;
+		}
 	}
 
 	return -1;
 }
 
-/**
- * Retrieves items from the database.
- *
- * The store-backend module builds a cache of the items retrieved the first time
- * this method is called, for faster access the next time it's called.
- *
- * You can set the loadFromCache parameter of this method to false to retrieve categories
- * from the database and not from the cache.
- *
-  * You can use the filter parameter to filter items returned by the following properties:
- *  - category_id (cell)
- *  - is_buyable (cell)
- *  - is_tradeable (cell)
- *  - type (string)
- *  - flags (cell)
- *
- * To use it, set it to a trie with some or all of the above properties.
- * IMPORTANT: You are *not* resposible for closing the filter trie's handle,
- *            the store-backend module is.
- *
- * The store-backend module calls this method when it is loaded to build a cache of
- * categories. It also provides the store_reloaditems command to reload items and categories
- * from the database.
- *
- * To use this method, you can provide a callback for when the items are loaded.
- * The callback will provide an array of the items' IDs. You can then loop the array,
- * and find info about each item using the Store_GetItem* methods.
- *
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param filter            A trie which will be used to filter the loadouts returned.
- * @param callback		    A callback which will be called when the items are loaded.
- * @param plugin			The plugin owner of the callback.
- * @param loadFromCache     Whether to load items from cache. If false, the method will
- *                          query the database and rebuild its cache.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
-GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
+GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, const String:sPriority[], any:data = 0)
 {
 	if (loadFromCache && g_itemCount != -1)
 	{
-		if (callback == INVALID_FUNCTION || callback == Function:0)
+		if (callback == INVALID_FUNCTION)
+		{
 			return;
-
+		}
+		
 		new categoryId;
 		new bool:categoryFilter = filter == INVALID_HANDLE ? false : GetTrieValue(filter, "category_id", categoryId);
 
@@ -392,7 +306,7 @@ GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback
 		new bool:isRefundable;
 		new bool:refundableFilter = filter == INVALID_HANDLE ? false : GetTrieValue(filter, "is_refundable", isRefundable);
 
-		decl String:type[STORE_MAX_TYPE_LENGTH];
+		new String:type[STORE_MAX_TYPE_LENGTH];
 		new bool:typeFilter = filter == INVALID_HANDLE ? false : GetTrieString(filter, "type", type, sizeof(type));
 
 		new flags;
@@ -406,12 +320,7 @@ GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback
 		
 		for (new item = 0; item < g_itemCount; item++)
 		{
-			if ((!categoryFilter || categoryId == g_items[item][ItemCategoryId]) &&
-				(!buyableFilter || isBuyable == g_items[item][ItemIsBuyable]) &&
-				(!tradeableFilter || isTradeable == g_items[item][ItemIsTradeable]) &&
-				(!refundableFilter || isRefundable == g_items[item][ItemIsRefundable]) &&
-				(!typeFilter || StrEqual(type, g_items[item][ItemType])) &&
-				(!flagsFilter || !g_items[item][ItemFlags] || (flags & g_items[item][ItemFlags])))
+			if ((!categoryFilter || categoryId == g_items[item][ItemCategoryId]) && (!buyableFilter || isBuyable == g_items[item][ItemIsBuyable]) && (!tradeableFilter || isTradeable == g_items[item][ItemIsTradeable]) && (!refundableFilter || isRefundable == g_items[item][ItemIsRefundable]) && (!typeFilter || StrEqual(type, g_items[item][ItemType])) && (!flagsFilter || !g_items[item][ItemFlags] || (flags & g_items[item][ItemFlags])))
 			{
 				items[count] = g_items[item][ItemId];
 				count++;
@@ -423,6 +332,11 @@ GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback
 		Call_PushCell(count);
 		Call_PushCell(data);
 		Call_Finish();
+		
+		new String:sName[MAX_NAME_LENGTH];
+		if (client > 0) GetClientName(client, sName, sizeof(sName));
+		
+		Store_LogDebug("Items Pulled for '%s': Count = %i - LoadFromCache: %s - Priority String: %s", strlen(sName) != 0 ? sName : "Console", count, loadFromCache ? "True" : "False", strlen(sPriority) != 0 ? sPriority : "N/A");
 	}
 	else
 	{
@@ -431,11 +345,16 @@ GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback
 		WritePackFunction(pack, callback);
 		WritePackCell(pack, _:plugin);
 		WritePackCell(pack, _:data);
-
-		SQL_TQuery(g_hSQL, T_GetItemsCallback, "SELECT id, name, display_name, description, type, loadout_slot, price, category_id, attrs, LENGTH(attrs) AS attrs_len, is_buyable, is_tradeable, is_refundable, flags FROM store_items ORDER BY price, display_name", pack);
+		
+		new String:sQuery[MAX_QUERY_SIZES];
+		Format(sQuery, sizeof(sQuery), "SELECT id, priority, name, display_name, description, type, loadout_slot, price, category_id, attrs, LENGTH(attrs) AS attrs_len, is_buyable, is_tradeable, is_refundable, flags FROM store_items ORDER BY price, display_name %s", sPriority);
+		SQL_TQuery(g_hSQL, T_GetItemsCallback, sQuery, pack);
 	}
 	
-	if (client != -1) CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded items");
+	if (client != -1)
+	{
+		CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded items");
+	}
 }
 
 public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
@@ -465,39 +384,40 @@ public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	while (SQL_FetchRow(hndl))
 	{
 		g_items[g_itemCount][ItemId] = SQL_FetchInt(hndl, 0);
-		SQL_FetchString(hndl, 1, g_items[g_itemCount][ItemName], STORE_MAX_NAME_LENGTH);
-		SQL_FetchString(hndl, 2, g_items[g_itemCount][ItemDisplayName], STORE_MAX_DISPLAY_NAME_LENGTH);
-		SQL_FetchString(hndl, 3, g_items[g_itemCount][ItemDescription], STORE_MAX_DESCRIPTION_LENGTH);
-		SQL_FetchString(hndl, 4, g_items[g_itemCount][ItemType], STORE_MAX_TYPE_LENGTH);
-		SQL_FetchString(hndl, 5, g_items[g_itemCount][ItemLoadoutSlot], STORE_MAX_LOADOUTSLOT_LENGTH);
-		g_items[g_itemCount][ItemPrice] = SQL_FetchInt(hndl, 6);
-		g_items[g_itemCount][ItemCategoryId] = SQL_FetchInt(hndl, 7);
+		g_items[g_itemCount][ItemPriority] = SQL_FetchInt(hndl, 1);
+		SQL_FetchString(hndl, 2, g_items[g_itemCount][ItemName], STORE_MAX_NAME_LENGTH);
+		SQL_FetchString(hndl, 3, g_items[g_itemCount][ItemDisplayName], STORE_MAX_DISPLAY_NAME_LENGTH);
+		SQL_FetchString(hndl, 4, g_items[g_itemCount][ItemDescription], STORE_MAX_DESCRIPTION_LENGTH);
+		SQL_FetchString(hndl, 5, g_items[g_itemCount][ItemType], STORE_MAX_TYPE_LENGTH);
+		SQL_FetchString(hndl, 6, g_items[g_itemCount][ItemLoadoutSlot], STORE_MAX_LOADOUTSLOT_LENGTH);
+		g_items[g_itemCount][ItemPrice] = SQL_FetchInt(hndl, 7);
+		g_items[g_itemCount][ItemCategoryId] = SQL_FetchInt(hndl, 8);
 
-		if (!SQL_IsFieldNull(hndl, 8))
+		if (!SQL_IsFieldNull(hndl, 9))
 		{
-			new attrsLength = SQL_FetchInt(hndl, 9);
+			new attrsLength = SQL_FetchInt(hndl, 10);
 
-			decl String:attrs[attrsLength+1];
-			SQL_FetchString(hndl, 8, attrs, attrsLength+1);
+			new String:attrs[attrsLength+1];
+			SQL_FetchString(hndl, 9, attrs, attrsLength+1);
 
 			Store_CallItemAttrsCallback(g_items[g_itemCount][ItemType], g_items[g_itemCount][ItemName], attrs);
 		}
 
-		g_items[g_itemCount][ItemIsBuyable] = bool:SQL_FetchInt(hndl, 10);
-		g_items[g_itemCount][ItemIsTradeable] = bool:SQL_FetchInt(hndl, 11);
-		g_items[g_itemCount][ItemIsRefundable] = bool:SQL_FetchInt(hndl, 12);
+		g_items[g_itemCount][ItemIsBuyable] = bool:SQL_FetchInt(hndl, 11);
+		g_items[g_itemCount][ItemIsTradeable] = bool:SQL_FetchInt(hndl, 12);
+		g_items[g_itemCount][ItemIsRefundable] = bool:SQL_FetchInt(hndl, 13);
 
-		decl String:flags[11];
-		SQL_FetchString(hndl, 13, flags, sizeof(flags));
+		new String:flags[11];
+		SQL_FetchString(hndl, 14, flags, sizeof(flags));
 		g_items[g_itemCount][ItemFlags] = ReadFlagString(flags);
-
+				
 		g_itemCount++;
 	}
 
 	Call_StartForward(g_reloadItemsPostForward);
 	Call_Finish();
 
-	GetItems(-1, filter, callback, plugin, true, arg);
+	GetItems(-1, filter, callback, plugin, true, "", arg);
 }
 
 GetItemIndex(id)
@@ -505,19 +425,14 @@ GetItemIndex(id)
 	for (new index = 0; index < g_itemCount; index++)
 	{
 		if (g_items[index][ItemId] == id)
+		{
 			return index;
+		}
 	}
 
 	return -1;
 }
 
-/**
- * Retrieves item attributes asynchronously.
- *
- * @param itemName			Item's name.
- *
- * @noreturn
- */
 GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -528,28 +443,19 @@ GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callb
 
 	new itemNameLength = 2*strlen(itemName)+1;
 
-	decl String:itemNameSafe[itemNameLength];
+	new String:itemNameSafe[itemNameLength];
 	SQL_EscapeString(g_hSQL, itemName, itemNameSafe, itemNameLength);
 
-	decl String:query[256];
-	Format(query, sizeof(query), "SELECT attrs, LENGTH(attrs) AS attrs_len FROM store_items WHERE name = '%s'", itemNameSafe);
-
-	SQL_TQuery(g_hSQL, T_GetItemAttributesCallback, query, pack);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "SELECT attrs, LENGTH(attrs) AS attrs_len FROM store_items WHERE name = '%s'", itemNameSafe);
+	SQL_TQuery(g_hSQL, T_GetItemAttributesCallback, sQuery, pack);
 }
 
 public T_GetItemAttributesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GetItemAttributes: %s", error);
-		return;
-	}
-	
 	ResetPack(pack);
 	
-	decl String:itemName[STORE_MAX_NAME_LENGTH];
+	new String:itemName[STORE_MAX_NAME_LENGTH];
 	ReadPackString(pack, itemName, sizeof(itemName));
 	
 	new Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:ReadPackFunction(pack);
@@ -558,34 +464,30 @@ public T_GetItemAttributesCallback(Handle:owner, Handle:hndl, const String:error
 	
 	CloseHandle(pack);
 	
-	if (SQL_FetchRow(hndl))
+	if (hndl == INVALID_HANDLE)
 	{
-		if (!SQL_IsFieldNull(hndl, 0))
+		Store_LogError("SQL Error on GetItemAttributes: %s", error);
+		return;
+	}
+	
+	if (SQL_FetchRow(hndl) && !SQL_IsFieldNull(hndl, 0))
+	{
+		new attrsLength = SQL_FetchInt(hndl, 1);
+		
+		new String:attrs[attrsLength+1];
+		SQL_FetchString(hndl, 0, attrs, attrsLength+1);
+		
+		if (callback != INVALID_FUNCTION)
 		{
-			new attrsLength = SQL_FetchInt(hndl, 1);
-			
-			decl String:attrs[attrsLength+1];
-			SQL_FetchString(hndl, 0, attrs, attrsLength+1);
-			
-			if (callback != INVALID_FUNCTION && callback != Function:0)
-			{
-				Call_StartFunction(plugin, callback);
-				Call_PushString(itemName);
-				Call_PushString(attrs);
-				Call_PushCell(arg);
-				Call_Finish();
-			}
+			Call_StartFunction(plugin, callback);
+			Call_PushString(itemName);
+			Call_PushString(attrs);
+			Call_PushCell(arg);
+			Call_Finish();
 		}
 	}
 }
 
-/**
- * Modifies item attributes asynchronously.
- *
- * @param itemName			Item's name.
- *
- * @noreturn
- */
 WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -594,29 +496,20 @@ WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItem
 	WritePackCell(pack, _:data);
 
 	new itemNameLength = 2*strlen(itemName)+1;
-	decl String:itemNameSafe[itemNameLength];
+	new String:itemNameSafe[itemNameLength];
 	SQL_EscapeString(g_hSQL, itemName, itemNameSafe, itemNameLength);
 
 	new attrsLength = 10 * 1024;
-	decl String:attrsSafe[2*attrsLength+1];
+	new String:attrsSafe[2*attrsLength+1];
 	SQL_EscapeString(g_hSQL, attrs, attrsSafe, 2*attrsLength+1);
-
-	decl String:query[attrsLength + 256];
-	Format(query, attrsLength + 256, "UPDATE store_items SET attrs = '%s}' WHERE name = '%s'", attrsSafe, itemNameSafe);
-
-	SQL_TQuery(g_hSQL, T_WriteItemAttributesCallback, query, pack);
+	
+	new String:sQuery[attrsLength + MAX_QUERY_SIZES];
+	Format(sQuery, attrsLength + MAX_QUERY_SIZES, "UPDATE store_items SET attrs = '%s}' WHERE name = '%s'", attrsSafe, itemNameSafe);
+	SQL_TQuery(g_hSQL, T_WriteItemAttributesCallback, sQuery, pack);
 }
 
 public T_WriteItemAttributesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on WriteItemAttributes: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(pack);
@@ -624,8 +517,14 @@ public T_WriteItemAttributesCallback(Handle:owner, Handle:hndl, const String:err
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on WriteItemAttributes: %s", error);
+		return;
+	}
 
-	if (callback != INVALID_FUNCTION && callback != Function:0)
+	if (callback != INVALID_FUNCTION)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(true);
@@ -634,70 +533,29 @@ public T_WriteItemAttributesCallback(Handle:owner, Handle:hndl, const String:err
 	}
 }
 
-/**
- * Retrieves loadouts from the database.
- *
- * The store-backend module builds a cache of the loadouts retrieved the first time
- * this method is called, for faster access the next time it's called.
- *
- * You can set the loadFromCache parameter of this method to false to retrieve loadouts
- * from the database and not from the cache.
- *
- * You can use the filter parameter to filter loadouts returned by the following properties:
- *  - game (string)
- *  - team (cell)
- *  - class (string)
- *
- * To use it, set it to a trie with some or all of the above properties.
- * IMPORTANT: You are *not* resposible for closing the filter trie's handle,
- *            the store-backend module is.
- *
- * The store-loadout module calls this method when it is loaded to build a cache of
- * loadouts.
- *
- * To use this method, you can provide a callback for when the items are loaded.
- * The callback will provide an array of the loadouts' IDs. You can then loop the array,
- * and find info about each item using the Store_GetLoadout* methods.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param filter            A trie which will be used to filter the loadouts returned.
- * @param callback		   	A callback which will be called when the items are loaded.
- * @param plugin			The plugin owner of the callback.
- * @param loadFromCache     Whether to load items from cache. If false, the method will
- *                          query the database and rebuild its cache.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 GetLoadouts(Handle:filter, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle:plugin = INVALID_HANDLE, bool:loadFromCache = true, any:data = 0)
 {
 	if (loadFromCache && g_loadoutCount != -1)
 	{
-		if (callback == INVALID_FUNCTION || callback == Function:0)
+		if (callback == INVALID_FUNCTION)
+		{
 			return;
+		}
 
 		new loadouts[g_loadoutCount];
 		new count = 0;
 
-		decl String:game[32];
+		new String:game[32];
 		new bool:gameFilter = filter == INVALID_HANDLE ? false : GetTrieString(filter, "game", game, sizeof(game));
 
-		decl String:class[32];
+		new String:class[32];
 		new bool:classFilter = filter == INVALID_HANDLE ? false : GetTrieString(filter, "class", class, sizeof(class));
-
-		// new team = -1;
-		// new bool:teamFilter = filter == INVALID_HANDLE ? false : GetTrieValue(filter, "team", team);
 
 		CloseHandle(filter);
 
 		for (new loadout = 0; loadout < g_loadoutCount; loadout++)
 		{
-			if (
-				(!gameFilter || StrEqual(game, "") || StrEqual(g_loadouts[loadout][LoadoutGame], "") || StrEqual(game, g_loadouts[loadout][LoadoutGame])) &&
-			 	(!classFilter || StrEqual(class, "") || StrEqual(g_loadouts[loadout][LoadoutClass], "") || StrEqual(class, g_loadouts[loadout][LoadoutClass]))
-				// (!teamFilter || team == -1 || team == g_loadouts[loadout][LoadoutTeam])
-				)
+			if ((!gameFilter || StrEqual(game, "") || StrEqual(g_loadouts[loadout][LoadoutGame], "") || StrEqual(game, g_loadouts[loadout][LoadoutGame])) && (!classFilter || StrEqual(class, "") || StrEqual(g_loadouts[loadout][LoadoutClass], "") || StrEqual(class, g_loadouts[loadout][LoadoutClass])))
 			{
 				loadouts[count] = g_loadouts[loadout][LoadoutId];
 				count++;
@@ -709,6 +567,8 @@ GetLoadouts(Handle:filter, Store_GetItemsCallback:callback = INVALID_FUNCTION, H
 		Call_PushCell(count);
 		Call_PushCell(data);
 		Call_Finish();
+		
+		Store_LogDebug("Loadouts Pulled: Count = %i - LoadFromCache: %s", count, loadFromCache ? "True" : "False");
 	}
 	else
 	{
@@ -717,8 +577,10 @@ GetLoadouts(Handle:filter, Store_GetItemsCallback:callback = INVALID_FUNCTION, H
 		WritePackFunction(pack, callback);
 		WritePackCell(pack, _:plugin);
 		WritePackCell(pack, _:data);
-
-		SQL_TQuery(g_hSQL, T_GetLoadoutsCallback, "SELECT id, display_name, game, class, team FROM store_loadouts", pack);
+		
+		new String:sQuery[MAX_QUERY_SIZES];
+		Format(sQuery, sizeof(sQuery), "SELECT id, display_name, game, class, team FROM store_loadouts");
+		SQL_TQuery(g_hSQL, T_GetLoadoutsCallback, sQuery, pack);
 	}
 }
 
@@ -749,12 +611,8 @@ public T_GetLoadoutsCallback(Handle:owner, Handle:hndl, const String:error[], an
 		SQL_FetchString(hndl, 1, g_loadouts[g_loadoutCount][LoadoutDisplayName], STORE_MAX_DISPLAY_NAME_LENGTH);
 		SQL_FetchString(hndl, 2, g_loadouts[g_loadoutCount][LoadoutGame], STORE_MAX_LOADOUTGAME_LENGTH);
 		SQL_FetchString(hndl, 3, g_loadouts[g_loadoutCount][LoadoutClass], STORE_MAX_LOADOUTCLASS_LENGTH);
-
-		if (SQL_IsFieldNull(hndl, 4))
-			g_loadouts[g_loadoutCount][LoadoutTeam] = -1;
-		else
-			g_loadouts[g_loadoutCount][LoadoutTeam] = SQL_FetchInt(hndl, 4);
-
+		g_loadouts[g_loadoutCount][LoadoutTeam] = SQL_IsFieldNull(hndl, 4) ? -1 : SQL_FetchInt(hndl, 4);
+		
 		g_loadoutCount++;
 	}
 
@@ -766,106 +624,75 @@ GetLoadoutIndex(id)
 	for (new index = 0; index < g_loadoutCount; index++)
 	{
 		if (g_loadouts[index][LoadoutId] == id)
+		{
 			return index;
+		}
 	}
 
 	return -1;
 }
 
-/**
- * Retrieves items of a specific player in a specific category.
- *
- * To use this method, you can provide a callback for when the items are loaded.
- * The callback will provide an array of the items' IDs. You can then loop the array,
- * and find info about each item using the Store_GetItem* methods.
- *
- * You can use the filter parameter to filter items returned by the following properties:
- *  - category_id (cell)
- *  - is_buyable (cell)
- *  - is_tradeable (cell)
- *  - is_refundable (cell)
- *  - type (string)
- *
- * To use it, set it to a trie with some or all of the above properties.
- * IMPORTANT: You are *not* resposible for closing the filter trie's handle,
- *            the store-backend module is.
- *
- * The items returned by this method are grouped by the item's name. That means that
- * if a player has multiple items with the same name (the unique identifier of the item, NOT its
- * display name), then the array will only have one element of that item.
- *
- * To determine how many items the player has of the same name, the callback provides the
- * itemCount[] array.
- *
- * To deremine whether or not an item is equipped in the loadout specified, the callback
- * provides the equipped[] array.
- *
- * For a full example of a usage of this method, see the store-inventory module.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param filter			A trie which will be used to filter the loadouts returned.
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param loadoutId         The loadout which will be used to determine whether an item is equipped or not.
- * @param callback		    A callback which will be called when the items are loaded.
- * @param plugin 			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItemsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, _:filter); // 0
-	WritePackCell(pack, accountId); // 8
-	WritePackCell(pack, loadoutId);	// 16
-	WritePackFunction(pack, callback); // 24(?)
-	WritePackCell(pack, _:plugin); // 32
-	WritePackCell(pack, _:data); // 40
+	WritePackCell(pack, _:filter);
+	WritePackCell(pack, accountId);
+	WritePackCell(pack, loadoutId);
+	WritePackFunction(pack, callback);
+	WritePackCell(pack, _:plugin);
+	WritePackCell(pack, _:data);
 	
 	if (g_itemCount == -1)
 	{
 		Store_LogWarning("Store_GetUserItems has been called before item loading.");
-		GetItems(-1, INVALID_HANDLE, GetUserItemsLoadCallback, INVALID_HANDLE, true, pack);
+		GetItems(-1, INVALID_HANDLE, GetUserItemsLoadCallback, INVALID_HANDLE, true, "", pack);
 
 		return;
 	}
 
-	decl String:query[1906];
-	Format(query, sizeof(query), "SELECT item_id, EXISTS(SELECT * FROM store_users_items_loadouts WHERE store_users_items_loadouts.useritem_id = store_users_items.id AND store_users_items_loadouts.loadout_id = %d) AS equipped, COUNT(*) AS count FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_users.auth = %d AND ((store_users_items.acquire_date IS NULL OR store_items.expiry_time IS NULL OR store_items.expiry_time = 0) OR (store_users_items.acquire_date IS NOT NULL AND store_items.expiry_time IS NOT NULL AND store_items.expiry_time <> 0 AND DATE_ADD(store_users_items.acquire_date, INTERVAL store_items.expiry_time SECOND) > NOW()))", loadoutId, accountId);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "SELECT item_id, EXISTS(SELECT * FROM store_users_items_loadouts WHERE store_users_items_loadouts.useritem_id = store_users_items.id AND store_users_items_loadouts.loadout_id = %d) AS equipped, COUNT(*) AS count FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_users.auth = %d AND ((store_users_items.acquire_date IS NULL OR store_items.expiry_time IS NULL OR store_items.expiry_time = 0) OR (store_users_items.acquire_date IS NOT NULL AND store_items.expiry_time IS NOT NULL AND store_items.expiry_time <> 0 AND DATE_ADD(store_users_items.acquire_date, INTERVAL store_items.expiry_time SECOND) > NOW()))", loadoutId, accountId);
 
 	new categoryId;
 	if (GetTrieValue(filter, "category_id", categoryId))
-		Format(query, sizeof(query), "%s AND store_items.category_id = %d", query, categoryId);
-
+	{
+		Format(sQuery, sizeof(sQuery), "%s AND store_items.category_id = %d", sQuery, categoryId);
+	}
+	
 	new bool:isBuyable;
 	if (GetTrieValue(filter, "is_buyable", isBuyable))
-		Format(query, sizeof(query), "%s AND store_items.is_buyable = %b", query, isBuyable);
-
+	{
+		Format(sQuery, sizeof(sQuery), "%s AND store_items.is_buyable = %b", sQuery, isBuyable);
+	}
+	
 	new bool:isTradeable;
 	if (GetTrieValue(filter, "is_tradeable", isTradeable))
-		Format(query, sizeof(query), "%s AND store_items.is_tradeable = %b", query, isTradeable);
-
+	{
+		Format(sQuery, sizeof(sQuery), "%s AND store_items.is_tradeable = %b", sQuery, isTradeable);
+	}
+	
 	new bool:isRefundable;
 	if (GetTrieValue(filter, "is_refundable", isRefundable))
-		Format(query, sizeof(query), "%s AND store_items.is_refundable = %b", query, isRefundable);
-
-	decl String:type[STORE_MAX_TYPE_LENGTH];
+	{
+		Format(sQuery, sizeof(sQuery), "%s AND store_items.is_refundable = %b", sQuery, isRefundable);
+	}
+	
+	new String:type[STORE_MAX_TYPE_LENGTH];
 	if (GetTrieString(filter, "type", type, sizeof(type)))
 	{
 		new typeLength = 2*strlen(type)+1;
 
-		decl String:buffer[typeLength];
+		new String:buffer[typeLength];
 		SQL_EscapeString(g_hSQL, type, buffer, typeLength);
 
-		Format(query, sizeof(query), "%s AND store_items.type = '%s'", query, buffer);
+		Format(sQuery, sizeof(sQuery), "%s AND store_items.type = '%s'", sQuery, buffer);
 	}
 
-	Format(query, sizeof(query), "%s GROUP BY item_id", query);
+	Format(sQuery, sizeof(sQuery), "%s GROUP BY item_id", sQuery);
 
 	CloseHandle(filter);
 
-	SQL_TQuery(g_hSQL, T_GetUserItemsCallback, query, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_GetUserItemsCallback, sQuery, pack, DBPrio_High);
 }
 
 public GetUserItemsLoadCallback(ids[], count, any:pack)
@@ -886,15 +713,6 @@ public GetUserItemsLoadCallback(ids[], count, any:pack)
 
 public T_GetUserItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GetUserItems: %s", error);
-		return;
-	}
-	
-	//SetPackPosition(pack, 16);
 	ResetPack(pack);
 	ReadPackCell(pack);
 	ReadPackCell(pack);
@@ -905,6 +723,12 @@ public T_GetUserItemsCallback(Handle:owner, Handle:hndl, const String:error[], a
 	new arg = ReadPackCell(pack);
 	
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on GetUserItems: %s", error);
+		return;
+	}
 	
 	new count = SQL_GetRowCount(hndl);
 	
@@ -932,19 +756,6 @@ public T_GetUserItemsCallback(Handle:owner, Handle:hndl, const String:error[], a
 	Call_Finish();
 }
 
-/**
- * Retrieves the amount of the same item a user has.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemName          The name of the item.
- * @param callback		    A callback which will be called when the items are loaded.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 GetUserItemCount(accountId, const String:itemName[], Store_GetUserItemCountCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -954,25 +765,16 @@ GetUserItemCount(accountId, const String:itemName[], Store_GetUserItemCountCallb
 
 	new itemNameLength = 2*strlen(itemName)+1;
 
-	decl String:itemNameSafe[itemNameLength];
+	new String:itemNameSafe[itemNameLength];
 	SQL_EscapeString(g_hSQL, itemName, itemNameSafe, itemNameLength);
 
-	decl String:query[512];
-	Format(query, sizeof(query), "SELECT COUNT(*) AS count FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_items.name = '%s' AND store_users.auth = %d", itemNameSafe, accountId);
-
-	SQL_TQuery(g_hSQL, T_GetUserItemCountCallback, query, pack, DBPrio_High);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "SELECT COUNT(*) AS count FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_items.name = '%s' AND store_users.auth = %d", itemNameSafe, accountId);
+	SQL_TQuery(g_hSQL, T_GetUserItemCountCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_GetUserItemCountCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GetUserItemCount: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new Store_GetUserItemCountCallback:callback = Store_GetUserItemCountCallback:ReadPackFunction(pack);
@@ -980,6 +782,12 @@ public T_GetUserItemCountCallback(Handle:owner, Handle:hndl, const String:error[
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on GetUserItemCount: %s", error);
+		return;
+	}
 
 	if (SQL_FetchRow(hndl))
 	{
@@ -990,18 +798,6 @@ public T_GetUserItemCountCallback(Handle:owner, Handle:hndl, const String:error[
 	}
 }
 
-/**
- * Retrieves the amount of credits that a player currently has.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param callback		    A callback which will be called when the credits amount is loaded.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 GetCredits(accountId, Store_GetCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -1009,22 +805,13 @@ GetCredits(accountId, Store_GetCreditsCallback:callback, Handle:plugin = INVALID
 	WritePackCell(pack, _:plugin);
 	WritePackCell(pack, _:data);
 
-	decl String:query[255];
-	Format(query, sizeof(query), "SELECT credits FROM store_users WHERE auth = %d", accountId);
-
-	SQL_TQuery(g_hSQL, T_GetCreditsCallback, query, pack, DBPrio_High);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "SELECT credits FROM store_users WHERE auth = %d", accountId);
+	SQL_TQuery(g_hSQL, T_GetCreditsCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_GetCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GetCredits: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new Store_GetCreditsCallback:callback = Store_GetCreditsCallback:ReadPackFunction(pack);
@@ -1033,6 +820,12 @@ public T_GetCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any
 	
 	CloseHandle(pack);
 	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on GetCredits: %s", error);
+		return;
+	}
+	
 	if (SQL_FetchRow(hndl))
 	{
 		Call_StartFunction(plugin, callback);
@@ -1042,31 +835,14 @@ public T_GetCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any
 	}
 }
 
-/**
- * Buys an item for a player, using his credits.
- *
- * To determine whether or not the process of buying that item was successful,
- * use the 'success' parameter that is provided by the callback.
- * A false value of that parameter probably means that the user didn't have enough credits.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemId            The ID of the item to buy.
- * @param callback		    A callback which will be called when the operation is finished.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 BuyItem(accountId, itemId, Store_BuyItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, itemId); // 0
-	WritePackCell(pack, accountId); // 8
-	WritePackFunction(pack, callback); // 16(?)
-	WritePackCell(pack, _:plugin); // 24
-	WritePackCell(pack, _:data); // 32
+	WritePackCell(pack, itemId);
+	WritePackCell(pack, accountId);
+	WritePackFunction(pack, callback);
+	WritePackCell(pack, _:plugin);
+	WritePackCell(pack, _:data);
 
 	GetCredits(accountId, T_BuyItemGetCreditsCallback, INVALID_HANDLE, pack);
 }
@@ -1104,7 +880,6 @@ public BuyItemGiveCreditsCallback(accountId, any:pack)
 
 public BuyItemGiveItemCallback(accountId, any:pack)
 {
-	//SetPackPosition(pack, 16);
 	ResetPack(pack);
 	ReadPackCell(pack);
 	ReadPackCell(pack);
@@ -1121,25 +896,12 @@ public BuyItemGiveItemCallback(accountId, any:pack)
 	Call_Finish();
 }
 
-/**
- * Removes one copy of an item from a player's inventory.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemId            The ID of the item to use.
- * @param callback		    A callback which will be called when the operation is finished.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 RemoveUserItem(accountId, itemId, Store_UseItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId); // 0
-	WritePackCell(pack, itemId); // 8
-	WritePackFunction(pack, callback); // 16(?)
+	WritePackCell(pack, accountId);
+	WritePackCell(pack, itemId);
+	WritePackFunction(pack, callback);
 	WritePackCell(pack, _:plugin);
 	WritePackCell(pack, _:data);
 
@@ -1148,22 +910,13 @@ RemoveUserItem(accountId, itemId, Store_UseItemCallback:callback, Handle:plugin 
 
 public RemoveUserItemUnnequipCallback(accountId, itemId, loadoutId, any:pack)
 {
-	decl String:query[255];
-	Format(query, sizeof(query), "DELETE FROM store_users_items WHERE store_users_items.item_id = %d AND store_users_items.user_id IN (SELECT store_users.id FROM store_users WHERE store_users.auth = %d) LIMIT 1", itemId, accountId);
-
-	SQL_TQuery(g_hSQL, T_RemoveUserItemCallback, query, pack, DBPrio_High);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "DELETE FROM store_users_items WHERE store_users_items.item_id = %d AND store_users_items.user_id IN (SELECT store_users.id FROM store_users WHERE store_users.auth = %d) LIMIT 1", itemId, accountId);
+	SQL_TQuery(g_hSQL, T_RemoveUserItemCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_RemoveUserItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on UseItem: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new accountId = ReadPackCell(pack);
@@ -1173,6 +926,12 @@ public T_RemoveUserItemCallback(Handle:owner, Handle:hndl, const String:error[],
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on UseItem: %s", error);
+		return;
+	}
 
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(accountId);
@@ -1181,46 +940,15 @@ public T_RemoveUserItemCallback(Handle:owner, Handle:hndl, const String:error[],
 	Call_Finish();
 }
 
-/**
- * Changes item equipped state in a specific loadout for a player.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemId            The ID of the item to change equipped state to.
- * @param loadoutId         The loadout to equip the item in.
- * @param isEquipped		Whether or not the item is equipped in the specified loadout.
- * @param callback		    A callback which will be called when the operation is finished.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 SetItemEquippedState(accountId, itemId, loadoutId, bool:isEquipped, Store_EquipItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	if (isEquipped)
+	switch (isEquipped)
 	{
-		EquipItem(accountId, itemId, loadoutId, callback, plugin, data);
-	}
-	else
-	{
-		UnequipItem(accountId, itemId, loadoutId, callback, plugin, data);
+		case true: EquipItem(accountId, itemId, loadoutId, callback, plugin, data);
+		case false: UnequipItem(accountId, itemId, loadoutId, callback, plugin, data);
 	}
 }
 
-/**
- * Equips an item for a player in a loadout.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemId            The ID of the item to equip.
- * @param loadoutId         The loadout to equip the item in.
- * @param callback		    A callback which will be called when the operation is finished.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 EquipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -1236,22 +964,13 @@ EquipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Handle
 
 public EquipUnequipItemCallback(accountId, itemId, loadoutId, any:pack)
 {
-	decl String:query[512];
-	Format(query, sizeof(query), "INSERT INTO store_users_items_loadouts (loadout_id, useritem_id) SELECT %d AS loadout_id, store_users_items.id FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id WHERE store_users.auth = %d AND store_users_items.item_id = %d LIMIT 1", loadoutId, accountId, itemId);
-
-	SQL_TQuery(g_hSQL, T_EquipItemCallback, query, pack, DBPrio_High);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "INSERT INTO store_users_items_loadouts (loadout_id, useritem_id) SELECT %d AS loadout_id, store_users_items.id FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id WHERE store_users.auth = %d AND store_users_items.item_id = %d LIMIT 1", loadoutId, accountId, itemId);
+	SQL_TQuery(g_hSQL, T_EquipItemCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_EquipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on EquipItem: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new accountId = ReadPackCell(pack);
@@ -1262,6 +981,12 @@ public T_EquipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on EquipItem: %s", error);
+		return;
+	}
 
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(accountId);
@@ -1271,22 +996,6 @@ public T_EquipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:
 	Call_Finish();
 }
 
-/**
- * Unequips an item for a player in a loadout.
- *
- * You can unequip an item in all client's loadouts by setting loadoutId to -1.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemId           	The ID of the item to unequip.
- * @param loadoutId         The loadout to unequip the item in.
- * @param callback		    A callback which will be called when the operation is finished.
- * @param plugin			The plugin owner of the callback.
- * @param data             	Extra data value to pass to the callback.
- *
- * @noreturn
- */
 UnequipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -1297,27 +1006,19 @@ UnequipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Hand
 	WritePackCell(pack, _:plugin);
 	WritePackCell(pack, _:data);
 
-	decl String:query[512];
-	Format(query, sizeof(query), "DELETE store_users_items_loadouts FROM store_users_items_loadouts INNER JOIN store_users_items ON store_users_items.id = store_users_items_loadouts.useritem_id INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_users.auth = %d AND store_items.loadout_slot = (SELECT loadout_slot from store_items WHERE store_items.id = %d)", accountId, itemId);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "DELETE store_users_items_loadouts FROM store_users_items_loadouts INNER JOIN store_users_items ON store_users_items.id = store_users_items_loadouts.useritem_id INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_users.auth = %d AND store_items.loadout_slot = (SELECT loadout_slot from store_items WHERE store_items.id = %d)", accountId, itemId);
 
 	if (loadoutId != -1)
 	{
-		Format(query, sizeof(query), "%s AND store_users_items_loadouts.loadout_id = %d", query, loadoutId);
+		Format(sQuery, sizeof(sQuery), "%s AND store_users_items_loadouts.loadout_id = %d", sQuery, loadoutId);
 	}
 
-	SQL_TQuery(g_hSQL, T_UnequipItemCallback, query, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_UnequipItemCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_UnequipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on UnequipItem: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new accountId = ReadPackCell(pack);
@@ -1328,6 +1029,12 @@ public T_UnequipItemCallback(Handle:owner, Handle:hndl, const String:error[], an
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on UnequipItem: %s", error);
+		return;
+	}
 
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(accountId);
@@ -1337,36 +1044,6 @@ public T_UnequipItemCallback(Handle:owner, Handle:hndl, const String:error[], an
 	Call_Finish();
 }
 
-/**
- * Retrieves equipped items of a specific player in a specific type.
- *
- * To use this method, you can provide a callback for when the items are loaded.
- * The callback will provide an array of the items' IDs. You can then loop the array,
- * and find info about each item using the Store_GetItem* methods.
- *
- * The items returned by this method are grouped by the item's name. That means that
- * if a player has multiple items with the same name (the unique identifier of the item, NOT its
- * display name), then the array will only have one element of that item.
- *
- * To determine how many items the player has of the same name, the callback provides the
- * itemCount[] array.
- *
- * To deremine whether or not an item is equipped in the loadout specified, the callback
- * provides the equipped[] array.
- *
- * For a full example of a usage of this method, see the store-inventory module.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param type              The category of the items you want to retrieve.
- * @param loadoutId         The loadout which will be used to determine whether an item is equipped or not.
- * @param callback		    A callback which will be called when the items are loaded.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 GetEquippedItemsByType(accountId, const String:type[], loadoutId, Store_GetItemsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -1374,22 +1051,13 @@ GetEquippedItemsByType(accountId, const String:type[], loadoutId, Store_GetItems
 	WritePackCell(pack, _:plugin);
 	WritePackCell(pack, _:data);
 	
-	decl String:query[512];
-	Format(query, sizeof(query), "SELECT store_items.id FROM store_users_items INNER JOIN store_items ON store_items.id = store_users_items.item_id INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_users_items_loadouts ON store_users_items_loadouts.useritem_id = store_users_items.id WHERE store_users.auth = %d AND store_items.type = '%s' AND store_users_items_loadouts.loadout_id = %d", accountId, type, loadoutId);
-	
-	SQL_TQuery(g_hSQL, T_GetEquippedItemsByTypeCallback, query, pack, DBPrio_High);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "SELECT store_items.id FROM store_users_items INNER JOIN store_items ON store_items.id = store_users_items.item_id INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_users_items_loadouts ON store_users_items_loadouts.useritem_id = store_users_items.id WHERE store_users.auth = %d AND store_items.type = '%s' AND store_users_items_loadouts.loadout_id = %d", accountId, type, loadoutId);
+	SQL_TQuery(g_hSQL, T_GetEquippedItemsByTypeCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_GetEquippedItemsByTypeCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GetEquippedItemsByType: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(pack);
@@ -1397,6 +1065,12 @@ public T_GetEquippedItemsByTypeCallback(Handle:owner, Handle:hndl, const String:
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on GetEquippedItemsByType: %s", error);
+		return;
+	}
 
 	new count = SQL_GetRowCount(hndl);
 	new ids[count];
@@ -1415,22 +1089,6 @@ public T_GetEquippedItemsByTypeCallback(Handle:owner, Handle:hndl, const String:
 	Call_Finish();
 }
 
-/**
- * Gives a player a specific amount of credits.
- *
- * You can also set the credits parameter to a negative value to take credits
- * from the player.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param credits           The amount of credits to give to the player.
- * @param callback		    A callback which will be called when the operation is finished.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
 GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -1439,22 +1097,13 @@ GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback, Handle:plugi
 	WritePackCell(pack, _:plugin);
 	WritePackCell(pack, _:data);
 
-	decl String:query[255];
-	Format(query, sizeof(query), "UPDATE store_users SET credits = credits + %d WHERE auth = %d", credits, accountId);
-
-	SQL_TQuery(g_hSQL, T_GiveCreditsCallback, query, pack);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits + %d WHERE auth = %d", credits, accountId);
+	SQL_TQuery(g_hSQL, T_GiveCreditsCallback, sQuery, pack);
 }
 
 public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GiveCredits: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new accountId = ReadPackCell(pack);
@@ -1463,8 +1112,14 @@ public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], an
 	new arg = ReadPackCell(pack);
 
 	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on GiveCredits: %s", error);
+		return;
+	}
 
-	if (callback != INVALID_FUNCTION && callback != Function:0)
+	if (callback != INVALID_FUNCTION)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
@@ -1473,20 +1128,53 @@ public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], an
 	}
 }
 
-/**
- * Gives player an item.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
- * @param itemId 			The ID of the item to give to the player.
- * @param acquireMethod
- * @param callback		    A callback which will be called when the operation is finished.
- * @param plugin			The plugin owner of the callback.
- * @param data              Extra data value to pass to the callback.
- *
- * @noreturn
- */
+RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
+{
+	new Handle:pack = CreateDataPack();
+	WritePackCell(pack, accountId);
+	WritePackFunction(pack, callback);
+	WritePackCell(pack, _:plugin);
+	WritePackCell(pack, _:data);
+	
+	if (Store_GetCreditsEx(accountId) < credits)
+	{
+		new String:sQuery[MAX_QUERY_SIZES];
+		Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = %d WHERE auth = %d", 0, accountId);
+		SQL_TQuery(g_hSQL, T_RemoveCreditsCallback, sQuery, pack);
+		return;
+	}
+
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits - %d WHERE auth = %d", credits, accountId);
+	SQL_TQuery(g_hSQL, T_RemoveCreditsCallback, sQuery, pack);
+}
+
+public T_RemoveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+{
+	ResetPack(pack);
+
+	new accountId = ReadPackCell(pack);
+	new Store_RemoveCreditsCallback:callback = Store_RemoveCreditsCallback:ReadPackFunction(pack);
+	new Handle:plugin = Handle:ReadPackCell(pack);
+	new arg = ReadPackCell(pack);
+
+	CloseHandle(pack);
+	
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on RemoveCredits: %s", error);
+		return;
+	}
+
+	if (callback != INVALID_FUNCTION)
+	{
+		Call_StartFunction(plugin, callback);
+		Call_PushCell(accountId);
+		Call_PushCell(_:arg);
+		Call_Finish();
+	}
+}
+
 GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_GiveCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
 	new Handle:pack = CreateDataPack();
@@ -1495,37 +1183,25 @@ GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, S
 	WritePackCell(pack, _:plugin);
 	WritePackCell(pack, _:data);
 
-	decl String:query[255];
-	Format(query, sizeof(query), "INSERT INTO store_users_items (user_id, item_id, acquire_date, acquire_method) SELECT store_users.id AS userId, '%d' AS item_id, NOW() as acquire_date, ", itemId);
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "INSERT INTO store_users_items (user_id, item_id, acquire_date, acquire_method) SELECT store_users.id AS userId, '%d' AS item_id, NOW() as acquire_date, ", itemId);
+	
+	switch (acquireMethod)
+	{
+		case Store_Shop: Format(sQuery, sizeof(sQuery), "%s'shop'", sQuery);
+		case Store_Trade: Format(sQuery, sizeof(sQuery), "%s'trade'", sQuery);
+		case Store_Gift: Format(sQuery, sizeof(sQuery), "%s'gift'", sQuery);
+		case Store_Admin: Format(sQuery, sizeof(sQuery), "%s'admin'", sQuery);
+		case Store_Web: Format(sQuery, sizeof(sQuery), "%s'web'", sQuery);
+		case Store_Unknown: Format(sQuery, sizeof(sQuery), "%sNULL", sQuery);
+	}
 
-	if (acquireMethod == Store_Shop)
-		Format(query, sizeof(query), "%s'shop'", query);
-	else if (acquireMethod == Store_Trade)
-		Format(query, sizeof(query), "%s'trade'", query);
-	else if (acquireMethod == Store_Gift)
-		Format(query, sizeof(query), "%s'gift'", query);
-	else if (acquireMethod == Store_Admin)
-		Format(query, sizeof(query), "%s'admin'", query);
-	else if (acquireMethod == Store_Web)
-		Format(query, sizeof(query), "%s'web'", query);
-	else if (acquireMethod == Store_Unknown)
-		Format(query, sizeof(query), "%sNULL", query);
-
-	Format(query, sizeof(query), "%s AS acquire_method FROM store_users WHERE auth = %d", query, accountId);
-
-	SQL_TQuery(g_hSQL, T_GiveItemCallback, query, pack, DBPrio_High);
+	Format(sQuery, sizeof(sQuery), "%s AS acquire_method FROM store_users WHERE auth = %d", sQuery, accountId);
+	SQL_TQuery(g_hSQL, T_GiveItemCallback, sQuery, pack, DBPrio_High);
 }
 
 public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
-	if (hndl == INVALID_HANDLE)
-	{
-		CloseHandle(pack);
-
-		Store_LogError("SQL Error on GiveItem: %s", error);
-		return;
-	}
-
 	ResetPack(pack);
 
 	new accountId = ReadPackCell(pack);
@@ -1535,7 +1211,13 @@ public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	
 	CloseHandle(pack);
 	
-	if (callback != INVALID_FUNCTION && callback != Function:0)
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on GiveItem: %s", error);
+		return;
+	}
+	
+	if (callback != INVALID_FUNCTION)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
@@ -1544,39 +1226,28 @@ public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	}
 }
 
-/**
- * Gives multiple players a specific amount of credits.
- *
- * You can also set the credits parameter to a negative value to take credits
- * from the players.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountIds	    	The account IDs of the players, use GetSteamAccountID to convert a client index to account ID.
- * @param accountIdsLength  	Players count.
- * @param credits           	The amount of credits to give to the players.
- *
- * @noreturn
- */
 GiveCreditsToUsers(accountIds[], accountIdsLength, credits)
 {
 	if (accountIdsLength == 0)
+	{
 		return;
-
-	decl String:query[2048];
-	Format(query, sizeof(query), "UPDATE store_users SET credits = credits + %d WHERE auth IN (", credits);
+	}
+	
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits + %d WHERE auth IN (", credits);
 
 	for (new i = 0; i < accountIdsLength; i++)
 	{
-		Format(query, sizeof(query), "%s%d", query, accountIds[i]);
+		Format(sQuery, sizeof(sQuery), "%s%d", sQuery, accountIds[i]);
 
 		if (i < accountIdsLength - 1)
-			Format(query, sizeof(query), "%s, ", query);
+		{
+			Format(sQuery, sizeof(sQuery), "%s, ", sQuery);
+		}
 	}
 
-	Format(query, sizeof(query), "%s)", query);
-
-	SQL_TQuery(g_hSQL, T_GiveCreditsToUsersCallback, query);
+	Format(sQuery, sizeof(sQuery), "%s)", sQuery);
+	SQL_TQuery(g_hSQL, T_GiveCreditsToUsersCallback, sQuery);
 }
 
 public T_GiveCreditsToUsersCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
@@ -1584,50 +1255,38 @@ public T_GiveCreditsToUsersCallback(Handle:owner, Handle:hndl, const String:erro
 	if (hndl == INVALID_HANDLE)
 	{
 		Store_LogError("SQL Error on GiveCreditsToUsers: %s", error);
-		return;
 	}
 }
 
-/**
- * Gives multiple players different amounts of credits.
- *
- * You can also set the credits parameter to a negative value to take credits
- * from the players.
- *
- * As with all other store-backend methods, this method is completely asynchronous.
- *
- * @param accountIds	    	The account IDs of the players, use GetSteamAccountID to convert a client index to account ID.
- * @param accountIdsLength  	Players count.
- * @param credits 				Amount of credits per player.
- *
- * @noreturn
- */
 GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits[])
 {
 	if (accountIdsLength == 0)
+	{
 		return;
-
-	decl String:query[2048];
-	Format(query, sizeof(query), "UPDATE store_users SET credits = credits + CASE auth");
+	}
+	
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits + CASE auth");
 
 	for (new i = 0; i < accountIdsLength; i++)
 	{
-		Format(query, sizeof(query), "%s WHEN %d THEN %d", query, accountIds[i], credits[i]);
+		Format(sQuery, sizeof(sQuery), "%s WHEN %d THEN %d", sQuery, accountIds[i], credits[i]);
 	}
 
-	Format(query, sizeof(query), "%s END WHERE auth IN (", query);
+	Format(sQuery, sizeof(sQuery), "%s END WHERE auth IN (", sQuery);
 
 	for (new i = 0; i < accountIdsLength; i++)
 	{
-		Format(query, sizeof(query), "%s%d", query, accountIds[i]);
+		Format(sQuery, sizeof(sQuery), "%s%d", sQuery, accountIds[i]);
 
 		if (i < accountIdsLength - 1)
-			Format(query, sizeof(query), "%s, ", query);
+		{
+			Format(sQuery, sizeof(sQuery), "%s, ", sQuery);
+		}
 	}
 
-	Format(query, sizeof(query), "%s)", query);
-
-	SQL_TQuery(g_hSQL, T_GiveDifferentCreditsToUsersCallback, query);
+	Format(sQuery, sizeof(sQuery), "%s)", sQuery);
+	SQL_TQuery(g_hSQL, T_GiveDifferentCreditsToUsersCallback, sQuery);
 }
 
 public T_GiveDifferentCreditsToUsersCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
@@ -1635,28 +1294,22 @@ public T_GiveDifferentCreditsToUsersCallback(Handle:owner, Handle:hndl, const St
 	if (hndl == INVALID_HANDLE)
 	{
 		Store_LogError("SQL Error on GiveDifferentCreditsToUsers: %s", error);
-		return;
 	}
 }
 
-/**
- * Query the database for items and categories, so that
- * the store-backend module will have a cache of them.
- *
- * @noreturn
- */
 ReloadItemCache(client)
 {
-	GetCategories(client, _, _, false);
-	GetItems(client, _, _, _, false);
+	GetCategories(client, _, _, false, "");
+	GetItems(client, _, _, _, false, "");
 }
 
 ConnectSQL()
 {
 	if (g_hSQL != INVALID_HANDLE)
+	{
 		CloseHandle(g_hSQL);
-
-	g_hSQL = INVALID_HANDLE;
+		g_hSQL = INVALID_HANDLE;
+	}
 
 	new String:sBuffer[64];
 	Store_GetSQLEntry(sBuffer, sizeof(sBuffer));
@@ -1678,41 +1331,37 @@ public T_ConnectSQLCallback(Handle:owner, Handle:hndl, const String:error[], any
 		SetFailState("PLUGIN STOPPED - Reason: reconnect counter reached max - PLUGIN STOPPED");
 		return;
 	}
-
+	
 	if (hndl == INVALID_HANDLE)
 	{
 		Store_LogError("Connection to SQL database has failed, Reason: %s", error);
-
+		
 		g_reconnectCounter++;
 		ConnectSQL();
-
+		
 		return;
 	}
-
-	decl String:driver[16];
-	SQL_GetDriverIdent(owner, driver, sizeof(driver));
-
+	
 	g_hSQL = CloneHandle(hndl);
-
-	if (StrEqual(driver, "mysql", false))
-	{
-		SQL_FastQuery(g_hSQL, "SET NAMES  'utf8'");
-		SQL_FastQuery(g_hSQL, "ALTER TABLE `store_items` ADD `flags` varchar(11) DEFAULT NULL;");
-	}
-
 	CloseHandle(hndl);
-
+	
+	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
+	
 	Call_StartForward(g_dbInitializedForward);
 	Call_Finish();
-
+	
 	ReloadItemCache(-1);
-
+	
 	g_reconnectCounter = 1;
 }
 
 public Action:Command_ReloadItems(client, args)
 {
-	if (client != 0) CPrintToChat(client, "%s%t", STORE_PREFIX, "Check console for reload outputs");
+	if (client != 0)
+	{
+		CPrintToChat(client, "%s%t", STORE_PREFIX, "Check console for reload outputs");
+	}
+	
 	RequestFrame(Frame_ReloadItems, client);
 	return Plugin_Handled;
 }
@@ -1753,10 +1402,23 @@ public Native_GetCategories(Handle:plugin, params)
 {
 	new any:data = 0;
 
-	if (params == 3)
-		data = GetNativeCell(3);
+	if (params == 4)
+	{
+		data = GetNativeCell(4);
+	}
+	
+	new length;
+	GetNativeStringLength(3, length);
+	
+	new String:sString[length + 1];
+	GetNativeString(3, sString, length + 1);
+	
+	GetCategories(-1, Store_GetItemsCallback:GetNativeFunction(1), plugin, bool:GetNativeCell(2), sString, data);
+}
 
-	GetCategories(-1, Store_GetItemsCallback:GetNativeFunction(1), plugin, bool:GetNativeCell(2), data);
+public Native_GetCategoryPriority(Handle:plugin, params)
+{
+	return g_categories[GetCategoryIndex(GetNativeCell(1))][CategoryPriority];
 }
 
 public Native_GetCategoryDisplayName(Handle:plugin, params)
@@ -1778,10 +1440,18 @@ public Native_GetItems(Handle:plugin, params)
 {
 	new any:data = 0;
 
-	if (params == 4)
-		data = GetNativeCell(4);
-
-	GetItems(-1, Handle:GetNativeCell(1), Store_GetItemsCallback:GetNativeFunction(2), plugin, bool:GetNativeCell(3), data);
+	if (params == 5)
+	{
+		data = GetNativeCell(5);
+	}
+	
+	new length;
+	GetNativeStringLength(4, length);
+	
+	new String:sString[length + 1];
+	GetNativeString(4, sString, length + 1);
+	
+	GetItems(-1, Handle:GetNativeCell(1), Store_GetItemsCallback:GetNativeFunction(2), plugin, bool:GetNativeCell(3), sString, data);
 }
 
 public Native_GetItemName(Handle:plugin, params)
@@ -1834,14 +1504,21 @@ public Native_IsItemRefundable(Handle:plugin, params)
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemIsRefundable];
 }
 
+public Native_GetItemPriority(Handle:plugin, params)
+{
+	return g_items[GetItemIndex(GetNativeCell(1))][ItemPriority];
+}
+
 public Native_GetItemAttributes(Handle:plugin, params)
 {
 	new any:data = 0;
 
 	if (params == 3)
+	{
 		data = GetNativeCell(3);
-
-	decl String:itemName[STORE_MAX_NAME_LENGTH];
+	}
+	
+	new String:itemName[STORE_MAX_NAME_LENGTH];
 	GetNativeString(1, itemName, sizeof(itemName));
 
 	GetItemAttributes(itemName, Store_ItemGetAttributesCallback:GetNativeFunction(2), plugin, data);
@@ -1852,15 +1529,17 @@ public Native_WriteItemAttributes(Handle:plugin, params)
 	new any:data = 0;
 
 	if (params == 4)
+	{
 		data = GetNativeCell(4);
-
-	decl String:itemName[STORE_MAX_NAME_LENGTH];
+	}
+	
+	new String:itemName[STORE_MAX_NAME_LENGTH];
 	GetNativeString(1, itemName, sizeof(itemName));
 
 	new attrsLength = 10*1024;
 	GetNativeStringLength(2, attrsLength);
 
-	decl String:attrs[attrsLength];
+	new String:attrs[attrsLength];
 	GetNativeString(2, attrs, attrsLength);
 
 	WriteItemAttributes(itemName, attrs, Store_BuyItemCallback:GetNativeFunction(3), plugin, data);
@@ -1869,9 +1548,12 @@ public Native_WriteItemAttributes(Handle:plugin, params)
 public Native_GetLoadouts(Handle:plugin, params)
 {
 	new any:data = 0;
+	
 	if (params == 4)
+	{
 		data = GetNativeCell(4);
-
+	}
+	
 	GetLoadouts(Handle:GetNativeCell(1), Store_GetItemsCallback:GetNativeFunction(2), plugin, bool:GetNativeCell(3), data);
 }
 
@@ -1898,19 +1580,25 @@ public Native_GetLoadoutTeam(Handle:plugin, params)
 public Native_GetUserItems(Handle:plugin, params)
 {
 	new any:data = 0;
+	
 	if (params == 5)
+	{
 		data = GetNativeCell(5);
-
+	}
+	
 	GetUserItems(GetNativeCell(1), GetNativeCell(2), GetNativeCell(3), Store_GetUserItemsCallback:GetNativeFunction(4), plugin, data);
 }
 
 public Native_GetUserItemCount(Handle:plugin, params)
 {
 	new any:data = 0;
+	
 	if (params == 4)
+	{
 		data = GetNativeCell(4);
-
-	decl String:itemName[STORE_MAX_NAME_LENGTH];
+	}
+	
+	new String:itemName[STORE_MAX_NAME_LENGTH];
 	GetNativeString(2, itemName, sizeof(itemName));
 
 	GetUserItemCount(GetNativeCell(1), itemName, Store_GetUserItemCountCallback:GetNativeFunction(3), plugin, data);
@@ -1919,10 +1607,39 @@ public Native_GetUserItemCount(Handle:plugin, params)
 public Native_GetCredits(Handle:plugin, params)
 {
 	new any:data = 0;
+	
 	if (params == 3)
+	{
 		data = GetNativeCell(3);
-
+	}
+	
 	GetCredits(GetNativeCell(1), Store_GetCreditsCallback:GetNativeFunction(2), plugin, data);
+}
+
+public Native_GetCreditsEx(Handle:plugin, params)
+{
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "SELECT credits FROM store_users WHERE auth = %d;", GetNativeCell(1));
+	new Handle:hQuery = SQL_Query(g_hSQL, sQuery);
+	
+	new credits = -1;
+	
+	if (hQuery == INVALID_HANDLE)
+	{
+		new String:sError[512];
+		SQL_GetError(g_hSQL, sError, sizeof(sError));
+		Store_LogError("SQL Error on GetCreditsEx: %s", sError);
+		return credits;
+	}
+		
+	if (SQL_FetchRow(hQuery))
+	{
+		credits = SQL_FetchInt(hQuery, 0);
+	}
+	
+	CloseHandle(hQuery);
+	
+	return credits;
 }
 
 public Native_BuyItem(Handle:plugin, params)
@@ -1930,8 +1647,10 @@ public Native_BuyItem(Handle:plugin, params)
 	new any:data = 0;
 
 	if (params == 4)
+	{
 		data = GetNativeCell(4);
-
+	}
+	
 	BuyItem(GetNativeCell(1), GetNativeCell(2), Store_BuyItemCallback:GetNativeFunction(3), plugin, data);
 }
 
@@ -1940,8 +1659,10 @@ public Native_RemoveUserItem(Handle:plugin, params)
 	new any:data = 0;
 
 	if (params == 4)
+	{
 		data = GetNativeCell(4);
-
+	}
+	
 	RemoveUserItem(GetNativeCell(1), GetNativeCell(2), Store_UseItemCallback:GetNativeFunction(3), plugin, data);
 }
 
@@ -1950,21 +1671,25 @@ public Native_SetItemEquippedState(Handle:plugin, params)
 	new any:data = 0;
 
 	if (params == 6)
+	{
 		data = GetNativeCell(6);
-
+	}
+	
 	SetItemEquippedState(GetNativeCell(1), GetNativeCell(2), GetNativeCell(3), GetNativeCell(4), Store_EquipItemCallback:GetNativeFunction(5), plugin, data);
 }
 
 public Native_GetEquippedItemsByType(Handle:plugin, params)
 {
-	decl String:type[32];
+	new String:type[32];
 	GetNativeString(2, type, sizeof(type));
 
 	new any:data = 0;
 
 	if (params == 5)
+	{
 		data = GetNativeCell(5);
-
+	}
+	
 	GetEquippedItemsByType(GetNativeCell(1), type, GetNativeCell(3), Store_GetItemsCallback:GetNativeFunction(4), plugin, data);
 }
 
@@ -1973,7 +1698,9 @@ public Native_GiveCredits(Handle:plugin, params)
 	new any:data = 0;
 
 	if (params == 4)
+	{
 		data = GetNativeCell(4);
+	}
 
 	GiveCredits(GetNativeCell(1), GetNativeCell(2), Store_GiveCreditsCallback:GetNativeFunction(3), plugin, data);
 }
@@ -1991,9 +1718,12 @@ public Native_GiveCreditsToUsers(Handle:plugin, params)
 public Native_GiveItem(Handle:plugin, params)
 {
 	new any:data = 0;
+	
 	if (params == 5)
+	{
 		data = GetNativeCell(5);
-
+	}
+	
 	GiveItem(GetNativeCell(1), GetNativeCell(2), Store_AcquireMethod:GetNativeCell(3), Store_GiveCreditsCallback:GetNativeFunction(4), plugin, data);
 }
 
@@ -2010,7 +1740,97 @@ public Native_GiveDifferentCreditsToUsers(Handle:plugin, params)
 	GiveDifferentCreditsToUsers(accountIds, length, credits);
 }
 
+public Native_RemoveCredits(Handle:plugin, params)
+{
+	new any:data = 0;
+
+	if (params == 4)
+	{
+		data = GetNativeCell(4);
+	}
+
+	RemoveCredits(GetNativeCell(1), GetNativeCell(2), Store_RemoveCreditsCallback:GetNativeFunction(3), plugin, data);
+}
+
 public Native_ReloadItemCache(Handle:plugin, params)
 {
 	ReloadItemCache(-1);
+}
+
+public Native_RegisterPluginModule(Handle:plugin, params)
+{
+	new length;
+	GetNativeStringLength(1, length);
+	
+	new String:sName[length + 1];
+	GetNativeString(1, sName, length + 1);
+	
+	new length2;
+	GetNativeStringLength(2, length2);
+	
+	new String:sDescription[length2 + 1];
+	GetNativeString(2, sDescription, length2 + 1);
+	
+	new length3;
+	GetNativeStringLength(3, length3);
+	
+	new String:sVersion_ConVar[length3 + 1];
+	GetNativeString(3, sVersion_ConVar, length3 + 1);
+	
+	new length4;
+	GetNativeStringLength(4, length4);
+	
+	new String:sVersion[length4 + 1];
+	GetNativeString(4, sVersion, length4 + 1);
+	
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "INSERT INTO store_versions (mod_name, mod_description, mod_ver_convar, mod_ver_number, server_id, last_updated) VALUES ('%s', '%s', '%s', '%s', '%d', NOW()) ON DUPLICATE KEY UPDATE mod_name = VALUES(mod_name), mod_description = VALUES(mod_description), mod_ver_convar = VALUES(mod_ver_convar), mod_ver_number = VALUES(mod_ver_number), server_id = VALUES(server_id), last_updated = NOW();", sName, sDescription, sVersion_ConVar, sVersion, Store_GetServerID());
+	SQL_TQuery(g_hSQL, T_RegisterPluginModuleCallback, sQuery);
+}
+
+public T_RegisterPluginModuleCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
+{
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on RegisterPluginModule: %s", error);
+	}
+}
+
+public Native_SQLTQuery(Handle:plugin, params)
+{
+	new SQLTCallback:callback = SQLTCallback:GetNativeFunction(1);
+	
+	new size;
+	GetNativeStringLength(2, size);
+	
+	new String:sQuery[size];
+	GetNativeString(2, sQuery, size);
+	
+	new data = GetNativeCell(3);
+	new DBPriority:prio = DBPriority:GetNativeCell(4);
+	
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, _:plugin);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, data);
+	
+	SQL_TQuery(g_hSQL, Query_Callback, sQuery, hPack, prio);
+}
+
+public Query_Callback(Handle:owner, Handle:hndl, const String:error[], any:data)
+{
+	ResetPack(data);
+	
+	new Handle:plugin = Handle:ReadPackCell(data);
+	new SQLTCallback:callback = SQLTCallback:ReadPackFunction(data);
+	new pack = ReadPackCell(data);
+	
+	CloseHandle(data);
+	
+	Call_StartFunction(plugin, callback);
+	Call_PushCell(owner);
+	Call_PushCell(hndl);
+	Call_PushString(error);
+	Call_PushCell(pack);
+	Call_Finish();
 }

@@ -2,6 +2,12 @@
 {
 	"Store Menu Title"
 	{
+		"#format"			"{1:s}"
+		"en"				"Sourcemod Store [{1}]"
+	}
+	
+	"Store Menu Credits"
+	{
 		"#format"			"{1:d},{2:s}"
 		"en"				"You have {1} {2}."
 	}
@@ -112,6 +118,18 @@
 	{
 		"#format"			"{1:s}"
 		"en"				"You bought '{olive}{1}{default}'!"
+	}
+	
+	"Item Purchase Menu Title"
+	{
+		"#format"			"{1:s}"
+		"en"				"Equip {1} now?"
+	}
+	
+	"Item Purchase Equipped"
+	{
+		"#format"			"{1:s},{2:d}"
+		"en"				"You have equipped '{olive}{1}{default}' into loadout {olive}{2}{default}.!"
 	}
 
 	"Refund"
@@ -254,7 +272,19 @@
 	{
 		"#format"			"{1:s}"
 		"en"				"Waiting for {teamcolor}{1} {default}to accept the gift."
-	}	
+	}
+	
+	"Gift Cancel"
+	{
+		"#format"			""
+		"en"				"You have cancelled your currently active gift before acceptance."
+	}
+	
+	"Gift Active Session"
+	{
+		"#format"			""
+		"en"				"You can only have one active gift session at a time, please cancel the session and try again."
+	}
 
 	"Not enough credits"
 	{

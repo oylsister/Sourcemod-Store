@@ -7,8 +7,11 @@
 #undef REQUIRE_EXTENSIONS
 #include <tf2_stocks>
 
-stock const String:TF2_ClassName[TFClassType][] = {"", "scout", "sniper", "soldier", "demoman", "medic",
-                                                    "heavy", "pyro", "spy", "engineer" };
+#define PLUGIN_NAME "[Store] Loadouts Module"
+#define PLUGIN_DESCRIPTION "Loadouts module for the Sourcemod Store."
+#define PLUGIN_VERSION_CONVAR "store_loadouts_version"
+
+stock const String:TF2_ClassName[TFClassType][] = {"", "scout", "sniper", "soldier", "demoman", "medic", "heavy", "pyro", "spy", "engineer" };
 
 new Handle:g_clientLoadoutChangedForward;
 
@@ -19,58 +22,47 @@ new Handle:g_lastClientLoadout;
 
 new bool:g_databaseInitialized = false;
 
-/**
- * Called before plugin is loaded.
- * 
- * @param myself    The plugin handle.
- * @param late      True if the plugin was loaded after map change, false on map start.
- * @param error     Error message if load failed.
- * @param err_max   Max length of the error message.
- *
- * @return          APLRes_Success for load success, APLRes_Failure or APLRes_SilentFailure otherwise.
- */
+public Plugin:myinfo =
+{
+	name = PLUGIN_NAME,
+	author = STORE_AUTHORS,
+	description = PLUGIN_DESCRIPTION,
+	version = STORE_VERSION,
+	url = STORE_URL
+};
+
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	CreateNative("Store_OpenLoadoutMenu", Native_OpenLoadoutMenu);
 	CreateNative("Store_GetClientLoadout", Native_GetClientLoadout);
 	
+	g_clientLoadoutChangedForward = CreateGlobalForward("Store_OnClientLoadoutChanged", ET_Event, Param_Cell);
+	
 	RegPluginLibrary("store-loadout");	
 	return APLRes_Success;
 }
 
-public Plugin:myinfo =
-{
-	name        = "[Store] Loadout",
-	author      = "alongub",
-	description = "Loadout component for [Store]",
-	version     = STORE_VERSION,
-	url         = "https://github.com/alongubkin/store"
-};
-
-
-/**
- * Plugin is loading.
- */
 public OnPluginStart()
 {
-	LoadConfig();
-
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
-
-	Store_AddMainMenuItem("Loadout", "Loadout Description", _, OnMainMenuLoadoutClick, 10);
 	
-	g_clientLoadoutChangedForward = CreateGlobalForward("Store_OnClientLoadoutChanged", ET_Event, Param_Cell);
+	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
+	
 	g_lastClientLoadout = RegClientCookie("lastClientLoadout", "Client loadout", CookieAccess_Protected);
 	
 	GetGameFolderName(g_game, sizeof(g_game));
 	
 	HookEvent("player_spawn", Event_PlayerSpawn);
+	
+	LoadConfig();
 }
 
-/**
- * The map is starting.
- */
+public Store_OnCoreLoaded()
+{
+	Store_AddMainMenuItem("Loadout", "Loadout Description", _, OnMainMenuLoadoutClick, 10);
+}
+
 public OnMapStart()
 {
 	if (g_databaseInitialized)
@@ -79,34 +71,26 @@ public OnMapStart()
 	}
 }
 
-/**
- * The database is ready to use.
- */
 public Store_OnDatabaseInitialized()
 {
 	g_databaseInitialized = true;
 	Store_GetLoadouts(INVALID_HANDLE, INVALID_FUNCTION, false);
+	
+	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
-/**
- * Called once a client's saved cookies have been loaded from the database.
- */
 public OnClientCookiesCached(client)
 {
-	decl String:buffer[12];
+	new String:buffer[12];
 	GetClientCookie(client, g_lastClientLoadout, buffer, sizeof(buffer));
-	
 	g_clientLoadout[client] = StringToInt(buffer);
 }
 
-/**
- * Load plugin config.
- */
 LoadConfig() 
 {
 	new Handle:kv = CreateKeyValues("root");
 	
-	decl String:path[PLATFORM_MAX_PATH];
+	new String:path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/loadout.cfg");
 	
 	if (!FileToKeyValues(kv, path)) 
@@ -115,11 +99,13 @@ LoadConfig()
 		SetFailState("Can't read config file %s", path);
 	}
 
-	decl String:menuCommands[255];
+	new String:menuCommands[255];
 	KvGetString(kv, "loadout_commands", menuCommands, sizeof(menuCommands));
 	Store_RegisterChatCommands(menuCommands, ChatCommand_OpenLoadout);
 	
 	CloseHandle(kv);
+	
+	Store_AddMainMenuItem("Loadout", "Loadout Description", _, OnMainMenuLoadoutClick, 10);
 }
 
 public ChatCommand_OpenLoadout(client)
@@ -136,16 +122,11 @@ public Event_PlayerSpawn(Handle:event, const String:name[], bool:dontBroadcast)
 {
 	new client = GetClientOfUserId(GetEventInt(event, "userid"));
 	if (g_clientLoadout[client] == 0 || !IsLoadoutAvailableFor(client, g_clientLoadout[client]))
+	{
 		FindOptimalLoadoutFor(client);
+	}
 }
 
-/**
- * Opens the loadout menu for a client.
- *
- * @param client			Client index.
- *
- * @noreturn
- */
 OpenLoadoutMenu(client)
 {
 	new Handle:filter = CreateTrie();
@@ -154,9 +135,8 @@ OpenLoadoutMenu(client)
 	
 	if (StrEqual(g_game, "tf"))
 	{
-		decl String:className[10];
+		new String:className[10];
 		TF2_GetClassName(TF2_GetPlayerClass(client), className, sizeof(className));
-		
 		SetTrieString(filter, "class", className);
 	}
 	
@@ -170,17 +150,19 @@ public GetLoadoutsCallback(ids[], count, any:client)
 		
 	for (new loadout = 0; loadout < count; loadout++)
 	{
-		decl String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetLoadoutDisplayName(ids[loadout], displayName, sizeof(displayName));
 		
 		new String:itemText[sizeof(displayName) + 3];
 		
 		if (g_clientLoadout[client] == ids[loadout])
+		{
 			strcopy(itemText, sizeof(itemText), "[L] ");
-			
+		}
+		
 		Format(itemText, sizeof(itemText), "%s%s", itemText, displayName);
 		
-		decl String:itemValue[8];
+		new String:itemValue[8];
 		IntToString(ids[loadout], itemValue, sizeof(itemValue));
 		
 		AddMenuItem(menu, itemValue, itemText);
@@ -192,58 +174,62 @@ public GetLoadoutsCallback(ids[], count, any:client)
 
 public LoadoutMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 {
-	if (action == MenuAction_Select)
+	switch (action)
 	{
-		new String:loadoutId[12];
-		
-		if (GetMenuItem(menu, slot, loadoutId, sizeof(loadoutId)))
-		{
-			g_clientLoadout[client] = StringToInt(loadoutId);			
-			SetClientCookie(client, g_lastClientLoadout, loadoutId);
-			
-			Call_StartForward(g_clientLoadoutChangedForward);
-			Call_PushCell(client);
-			Call_Finish();
-		}
-		
-		OpenLoadoutMenu(client);
-	}
-	else if (action == MenuAction_Cancel)
-	{
-		if (slot == MenuCancel_ExitBack)
-		{
-			Store_OpenMainMenu(client);
-		}
-	}		
-	else if (action == MenuAction_End)
-	{
-		CloseHandle(menu);
+		case MenuAction_Select:
+			{
+				new String:sMenuItem[64];
+				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
+				
+				g_clientLoadout[client] = StringToInt(sMenuItem);			
+				SetClientCookie(client, g_lastClientLoadout, sMenuItem);
+				
+				Call_StartForward(g_clientLoadoutChangedForward);
+				Call_PushCell(client);
+				Call_Finish();
+				
+				OpenLoadoutMenu(client);
+			}
+		case MenuAction_Cancel:
+			{
+				if (slot == MenuCancel_ExitBack)
+				{
+					Store_OpenMainMenu(client);
+				}
+			}
+		case MenuAction_End: CloseHandle(menu);
 	}
 }
 
 bool:IsLoadoutAvailableFor(client, loadout)
 {
-	decl String:game[STORE_MAX_LOADOUTGAME_LENGTH];
+	new String:game[STORE_MAX_LOADOUTGAME_LENGTH];
 	Store_GetLoadoutGame(loadout, game, sizeof(game));
 	
 	if (!StrEqual(game, "") && !StrEqual(game, g_game))
+	{
 		return false;
+	}
 	
 	if (StrEqual(g_game, "tf"))
 	{
-		decl String:loadoutClass[STORE_MAX_LOADOUTCLASS_LENGTH];
+		new String:loadoutClass[STORE_MAX_LOADOUTCLASS_LENGTH];
 		Store_GetLoadoutClass(loadout, loadoutClass, sizeof(loadoutClass));
 		
-		decl String:className[10];
+		new String:className[10];
 		TF2_GetClassName(TF2_GetPlayerClass(client), className, sizeof(className));
 		
 		if (!StrEqual(loadoutClass, "") && !StrEqual(loadoutClass, className))
-			return false;		
+		{
+			return false;
+		}
 	}
 	
 	new loadoutTeam = Store_GetLoadoutTeam(loadout);
 	if (loadoutTeam != -1 && GetClientTeam(client) != loadoutTeam)
+	{
 		return false;
+	}
 		
 	return true;
 }
@@ -251,17 +237,18 @@ bool:IsLoadoutAvailableFor(client, loadout)
 FindOptimalLoadoutFor(client)
 {
 	if (!g_databaseInitialized)
+	{
 		return;
-		
+	}
+	
 	new Handle:filter = CreateTrie();
 	SetTrieString(filter, "game", g_game);
 	SetTrieValue(filter, "team", GetClientTeam(client));
 	
 	if (StrEqual(g_game, "tf"))
 	{
-		decl String:className[10];
+		new String:className[10];
 		TF2_GetClassName(TF2_GetPlayerClass(client), className, sizeof(className));
-		
 		SetTrieString(filter, "class", className);
 	}
 	
@@ -272,14 +259,16 @@ public FindOptimalLoadoutCallback(ids[], count, any:serial)
 {
 	new client = GetClientFromSerial(serial);
 	
-	if (client == 0)
+	if (!client)
+	{
 		return;
+	}
 	
 	if (count > 0)
 	{
 		g_clientLoadout[client] = ids[0];
 		
-		decl String:buffer[12];
+		new String:buffer[12];
 		IntToString(g_clientLoadout[client], buffer, sizeof(buffer));
 		
 		SetClientCookie(client, g_lastClientLoadout, buffer);
@@ -304,7 +293,7 @@ public Native_GetClientLoadout(Handle:plugin, params)
 	return g_clientLoadout[GetNativeCell(1)];
 }
 
-stock TF2_GetClassName(TFClassType:classType, String:buffer[], maxlength)
+TF2_GetClassName(TFClassType:classType, String:buffer[], maxlength)
 {
 	strcopy(buffer, maxlength, TF2_ClassName[classType]);
 }

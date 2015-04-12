@@ -28,9 +28,6 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("Store_OpenInventory", Native_OpenInventory);
 	CreateNative("Store_OpenInventoryCategory", Native_OpenInventoryCategory);
 	
-	CreateNative("Store_OpenInventoryEx", Native_OpenInventoryEx);
-	CreateNative("Store_OpenInventoryCategoryEx", Native_OpenInventoryCategoryEx);
-	
 	CreateNative("Store_RegisterItemType", Native_RegisterItemType);
 	CreateNative("Store_IsItemTypeRegistered", Native_IsItemTypeRegistered);
 	
@@ -203,6 +200,7 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 		if (left == 0)
 		{
 			DisplayMenu(categories_menu[client], client, MENU_TIME_FOREVER);
+			categories_menu[client] = INVALID_HANDLE;
 		}
 		
 		return;
@@ -219,6 +217,7 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	if (left == 0)
 	{
 		DisplayMenu(categories_menu[client], client, MENU_TIME_FOREVER);
+		categories_menu[client] = INVALID_HANDLE;
 	}
 }
 
@@ -241,7 +240,6 @@ public InventoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 			}
 		case MenuAction_End:
 		{
-			categories_menu[client] = INVALID_HANDLE;
 			CloseHandle(menu);
 		}
 	}
@@ -281,6 +279,7 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	if (count < 1)
 	{
 		CPrintToChat(client, "%s%t", STORE_PREFIX, "Inventory category is empty");
+		OpenInventory(client);
 		return;
 	}
 	
@@ -493,16 +492,6 @@ public Native_OpenInventory(Handle:plugin, params)
 public Native_OpenInventoryCategory(Handle:plugin, params)
 {       
 	OpenInventoryCategory(GetNativeCell(1), GetNativeCell(2));
-}
-
-public Native_OpenInventoryEx(Handle:plugin, params)
-{       
-	
-}
-
-public Native_OpenInventoryCategoryEx(Handle:plugin, params)
-{       
-	
 }
 
 public Native_RegisterItemType(Handle:plugin, params)

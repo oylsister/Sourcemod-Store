@@ -247,6 +247,7 @@ public GetItemsForCategoryCallback(ids[], count, any:pack)
 	{
 		SetMenuExitBackButton(categories_menu[client], true);
 		DisplayMenu(categories_menu[client], client, 0);
+		categories_menu[client] = INVALID_HANDLE;
 	}
 }
 
@@ -353,7 +354,13 @@ public ShopCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot
 				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 				DoBuyItem(client, StringToInt(sMenuItem));
 			}
-		case MenuAction_Cancel: OpenShop(client);
+		case MenuAction_Cancel:
+			{
+				if (slot == MenuCancel_ExitBack)
+				{
+					OpenShop(client);
+				}
+			}
 		case MenuAction_End: CloseHandle(menu);
 	}
 }
@@ -552,7 +559,10 @@ public EquipAfterPurchaseMenuHandle(Handle:menu, MenuAction:action, client, slot
 	}
 }
 
-public EquipItemCallback(accountId, itemId, loadoutId, any:data) {}
+public EquipItemCallback(accountId, itemId, loadoutId, any:data)
+{
+	
+}
 
 public Native_OpenShop(Handle:plugin, params)
 {

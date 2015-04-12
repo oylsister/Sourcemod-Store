@@ -7,7 +7,7 @@
 #define STORE_PREFIX "{GREEN}[Store] {DEFAULT}"
 #define STORE_PREFIX_NOCOLOR "[Store] "
 #define STORE_URL "https://github.com/alongubkin/store"
-#define STORE_VERSION "1.2.3"
+#define STORE_VERSION "1.2.3a"
 
 typeset Store_MenuItemClickCallback
 {

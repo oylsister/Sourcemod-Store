@@ -63,6 +63,8 @@ new g_itemCount = -1;
 new g_loadouts[MAX_LOADOUTS][Loadout];
 new g_loadoutCount = -1;
 
+new bool:bLateLoad;
+
 public Plugin:myinfo =
 {
 	name = PLUGIN_NAME,
@@ -116,6 +118,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("Store_GiveItem", Native_GiveItem);
 	
 	CreateNative("Store_RemoveCredits", Native_RemoveCredits);
+	CreateNative("Store_RemoveCreditsFromUsers", Native_RemoveCreditsFromUsers);
 
 	CreateNative("Store_BuyItem", Native_BuyItem);
 	CreateNative("Store_RemoveUserItem", Native_RemoveUserItem);
@@ -133,6 +136,8 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	g_reloadItemsPostForward = CreateGlobalForward("Store_OnReloadItemsPost", ET_Event);
 
 	RegPluginLibrary("store-backend");
+	
+	bLateLoad = true;
 	return APLRes_Success;
 }
 
@@ -145,6 +150,16 @@ public OnPluginStart()
 
 	RegAdminCmd("store_reloaditems", Command_ReloadItems, ADMFLAG_RCON, "Reloads store item cache.");
 	RegAdminCmd("sm_store_reloaditems", Command_ReloadItems, ADMFLAG_RCON, "Reloads store item cache.");
+	RegAdminCmd("sm_native_credits", Command_TestCreditsNative, ADMFLAG_RCON);
+}
+
+public OnConfigsExecuted()
+{
+	if (bLateLoad)
+	{
+		Store_LogWarning("ERROR: Please change the map or restart the server, you cannot load reload store-backend while the map is loaded. (CRASH WARNING)");
+		bLateLoad = false;
+	}
 }
 
 public OnAllPluginsLoaded()
@@ -168,6 +183,7 @@ Register(accountId, const String:name[] = "", credits = 0)
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "INSERT INTO store_users (auth, name, credits) VALUES (%d, '%s', %d) ON DUPLICATE KEY UPDATE name = '%s';", accountId, safeName, credits, safeName);
 	SQL_TQuery(g_hSQL, T_RegisterCallback, sQuery, _, DBPrio_High);
+	Store_LogTrace("[SQL Query] Register - %s", sQuery);
 }
 
 RegisterClient(client, credits = 0)
@@ -222,39 +238,39 @@ GetCategories(client, Store_GetItemsCallback:callback = INVALID_FUNCTION, Handle
 	}
 	else
 	{
-		new Handle:pack = CreateDataPack();
-		WritePackFunction(pack, callback);
-		WritePackCell(pack, _:plugin);
-		WritePackCell(pack, _:data);
+		new Handle:hPack = CreateDataPack();
+		WritePackFunction(hPack, callback);
+		WritePackCell(hPack, _:plugin);
+		WritePackCell(hPack, _:data);
 		
 		new String:sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), "SELECT id, priority, display_name, description, require_plugin FROM store_categories %s", sPriority);
-		SQL_TQuery(g_hSQL, T_GetCategoriesCallback, sQuery, pack);
+		SQL_TQuery(g_hSQL, T_GetCategoriesCallback, sQuery, hPack);
+		Store_LogTrace("[SQL Query] GetCategories - %s", sQuery);
 	}
 	
 	if (client != -1)
 	{
-		CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded categories");
+		CReplyToCommand(client, "%t%t", (client != 0) ? "Store Tag Colored" : "Store Tag", "Reloaded categories");
 	}
 }
 
-public T_GetCategoriesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetCategoriesCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
 	if (hndl == INVALID_HANDLE)
 	{
-		CloseHandle(pack);
-
+		CloseHandle(hPack);
 		Store_LogError("SQL Error on GetCategories: %s", error);
 		return;
 	}
 
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 
 	g_categoryCount = 0;
 
@@ -340,29 +356,29 @@ GetItems(client, Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback
 	}
 	else
 	{
-		new Handle:pack = CreateDataPack();
-		WritePackCell(pack, _:filter);
-		WritePackFunction(pack, callback);
-		WritePackCell(pack, _:plugin);
-		WritePackCell(pack, _:data);
+		new Handle:hPack = CreateDataPack();
+		WritePackCell(hPack, _:filter);
+		WritePackFunction(hPack, callback);
+		WritePackCell(hPack, _:plugin);
+		WritePackCell(hPack, _:data);
 		
 		new String:sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), "SELECT id, priority, name, display_name, description, type, loadout_slot, price, category_id, attrs, LENGTH(attrs) AS attrs_len, is_buyable, is_tradeable, is_refundable, flags FROM store_items ORDER BY price, display_name %s", sPriority);
-		SQL_TQuery(g_hSQL, T_GetItemsCallback, sQuery, pack);
+		SQL_TQuery(g_hSQL, T_GetItemsCallback, sQuery, hPack);
+		Store_LogTrace("[SQL Query] GetItems - %s", sQuery);
 	}
 	
 	if (client != -1)
 	{
-		CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloaded items");
+		CReplyToCommand(client, "%t%t", (client != 0) ? "Store Tag Colored" : "Store Tag", "Reloaded items");
 	}
 }
 
-public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
 	if (hndl == INVALID_HANDLE)
 	{
-		CloseHandle(pack);
-
+		CloseHandle(hPack);
 		Store_LogError("SQL Error on GetItems: %s", error);
 		return;
 	}
@@ -370,14 +386,14 @@ public T_GetItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:p
 	Call_StartForward(g_reloadItemsForward);
 	Call_Finish();
 	
-	ResetPack(pack);
+	ResetPack(hPack);
 	
-	new Handle:filter = Handle:ReadPackCell(pack);
-	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Handle:filter = Handle:ReadPackCell(hPack);
+	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 
 	g_itemCount = 0;
 
@@ -435,11 +451,11 @@ GetItemIndex(id)
 
 GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackString(pack, itemName);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackString(hPack, itemName);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
 	new itemNameLength = 2*strlen(itemName)+1;
 
@@ -448,21 +464,22 @@ GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callb
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "SELECT attrs, LENGTH(attrs) AS attrs_len FROM store_items WHERE name = '%s'", itemNameSafe);
-	SQL_TQuery(g_hSQL, T_GetItemAttributesCallback, sQuery, pack);
+	SQL_TQuery(g_hSQL, T_GetItemAttributesCallback, sQuery, hPack);
+	Store_LogTrace("[SQL Query] GetItemAttributes - %s", sQuery);
 }
 
-public T_GetItemAttributesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetItemAttributesCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 	
 	new String:itemName[STORE_MAX_NAME_LENGTH];
-	ReadPackString(pack, itemName, sizeof(itemName));
+	ReadPackString(hPack, itemName, sizeof(itemName));
 	
-	new Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 	
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -490,12 +507,12 @@ public T_GetItemAttributesCallback(Handle:owner, Handle:hndl, const String:error
 
 WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
-	new itemNameLength = 2*strlen(itemName)+1;
+	new itemNameLength = 2 * strlen(itemName) + 1;
 	new String:itemNameSafe[itemNameLength];
 	SQL_EscapeString(g_hSQL, itemName, itemNameSafe, itemNameLength);
 
@@ -505,18 +522,19 @@ WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItem
 	
 	new String:sQuery[attrsLength + MAX_QUERY_SIZES];
 	Format(sQuery, attrsLength + MAX_QUERY_SIZES, "UPDATE store_items SET attrs = '%s}' WHERE name = '%s'", attrsSafe, itemNameSafe);
-	SQL_TQuery(g_hSQL, T_WriteItemAttributesCallback, sQuery, pack);
+	SQL_TQuery(g_hSQL, T_WriteItemAttributesCallback, sQuery, hPack);
+	Store_LogTrace("[SQL Query] WriteItemAttributes - %s", sQuery);
 }
 
-public T_WriteItemAttributesCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_WriteItemAttributesCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -572,36 +590,37 @@ GetLoadouts(Handle:filter, Store_GetItemsCallback:callback = INVALID_FUNCTION, H
 	}
 	else
 	{
-		new Handle:pack = CreateDataPack();
-		WritePackCell(pack, _:filter);
-		WritePackFunction(pack, callback);
-		WritePackCell(pack, _:plugin);
-		WritePackCell(pack, _:data);
+		new Handle:hPack = CreateDataPack();
+		WritePackCell(hPack, _:filter);
+		WritePackFunction(hPack, callback);
+		WritePackCell(hPack, _:plugin);
+		WritePackCell(hPack, _:data);
 		
 		new String:sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), "SELECT id, display_name, game, class, team FROM store_loadouts");
-		SQL_TQuery(g_hSQL, T_GetLoadoutsCallback, sQuery, pack);
+		SQL_TQuery(g_hSQL, T_GetLoadoutsCallback, sQuery, hPack);
+		Store_LogTrace("[SQL Query] GetLoadouts - %s", sQuery);
 	}
 }
 
-public T_GetLoadoutsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetLoadoutsCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
 	if (hndl == INVALID_HANDLE)
 	{
-		CloseHandle(pack);
+		CloseHandle(hPack);
 
 		Store_LogError("SQL Error on GetLoadouts: %s", error);
 		return;
 	}
 
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Handle:filter = Handle:ReadPackCell(pack);
-	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Handle:filter = Handle:ReadPackCell(hPack);
+	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 
 	g_loadoutCount = 0;
 
@@ -634,18 +653,18 @@ GetLoadoutIndex(id)
 
 GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItemsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, _:filter);
-	WritePackCell(pack, accountId);
-	WritePackCell(pack, loadoutId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, _:filter);
+	WritePackCell(hPack, accountId);
+	WritePackCell(hPack, loadoutId);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 	
 	if (g_itemCount == -1)
 	{
 		Store_LogWarning("Store_GetUserItems has been called before item loading.");
-		GetItems(-1, INVALID_HANDLE, GetUserItemsLoadCallback, INVALID_HANDLE, true, "", pack);
+		GetItems(-1, INVALID_HANDLE, GetUserItemsLoadCallback, INVALID_HANDLE, true, "", hPack);
 
 		return;
 	}
@@ -692,37 +711,38 @@ GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItemsCallback:cal
 
 	CloseHandle(filter);
 
-	SQL_TQuery(g_hSQL, T_GetUserItemsCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_GetUserItemsCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] GetUserItems - %s", sQuery);
 }
 
-public GetUserItemsLoadCallback(ids[], count, any:pack)
+public GetUserItemsLoadCallback(ids[], count, any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Handle:filter = Handle:ReadPackCell(pack);
-	new accountId = ReadPackCell(pack);
-	new loadoutId = ReadPackCell(pack);
-	new Store_GetUserItemsCallback:callback = Store_GetUserItemsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Handle:filter = Handle:ReadPackCell(hPack);
+	new accountId = ReadPackCell(hPack);
+	new loadoutId = ReadPackCell(hPack);
+	new Store_GetUserItemsCallback:callback = Store_GetUserItemsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 
 	GetUserItems(filter, accountId, loadoutId, callback, plugin, arg);
 }
 
-public T_GetUserItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetUserItemsCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
-	ReadPackCell(pack);
-	ReadPackCell(pack);
+	ResetPack(hPack);
+	ReadPackCell(hPack);
+	ReadPackCell(hPack);
 	
-	new loadoutId = ReadPackCell(pack);
-	new Store_GetUserItemsCallback:callback = Store_GetUserItemsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new loadoutId = ReadPackCell(hPack);
+	new Store_GetUserItemsCallback:callback = Store_GetUserItemsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 	
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -758,10 +778,10 @@ public T_GetUserItemsCallback(Handle:owner, Handle:hndl, const String:error[], a
 
 GetUserItemCount(accountId, const String:itemName[], Store_GetUserItemCountCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
 	new itemNameLength = 2*strlen(itemName)+1;
 
@@ -770,18 +790,19 @@ GetUserItemCount(accountId, const String:itemName[], Store_GetUserItemCountCallb
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "SELECT COUNT(*) AS count FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_items.name = '%s' AND store_users.auth = %d", itemNameSafe, accountId);
-	SQL_TQuery(g_hSQL, T_GetUserItemCountCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_GetUserItemCountCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] GetUserItemCount - %s", sQuery);
 }
 
-public T_GetUserItemCountCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetUserItemCountCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Store_GetUserItemCountCallback:callback = Store_GetUserItemCountCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_GetUserItemCountCallback:callback = Store_GetUserItemCountCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -800,25 +821,26 @@ public T_GetUserItemCountCallback(Handle:owner, Handle:hndl, const String:error[
 
 GetCredits(accountId, Store_GetCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "SELECT credits FROM store_users WHERE auth = %d", accountId);
-	SQL_TQuery(g_hSQL, T_GetCreditsCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_GetCreditsCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] GetCredits - %s", sQuery);
 }
 
-public T_GetCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Store_GetCreditsCallback:callback = Store_GetCreditsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_GetCreditsCallback:callback = Store_GetCreditsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 	
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -837,25 +859,25 @@ public T_GetCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any
 
 BuyItem(accountId, itemId, Store_BuyItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, itemId);
-	WritePackCell(pack, accountId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, itemId);
+	WritePackCell(hPack, accountId);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
-	GetCredits(accountId, T_BuyItemGetCreditsCallback, INVALID_HANDLE, pack);
+	GetCredits(accountId, T_BuyItemGetCreditsCallback, INVALID_HANDLE, hPack);
 }
 
-public T_BuyItemGetCreditsCallback(credits, any:pack)
+public T_BuyItemGetCreditsCallback(credits, any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new itemId = ReadPackCell(pack);
-	new accountId = ReadPackCell(pack);
-	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new itemId = ReadPackCell(hPack);
+	new accountId = ReadPackCell(hPack);
+	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
 	if (credits < g_items[GetItemIndex(itemId)][ItemPrice])
 	{
@@ -867,28 +889,28 @@ public T_BuyItemGetCreditsCallback(credits, any:pack)
 		return;
 	}
 
-	GiveCredits(accountId, -g_items[GetItemIndex(itemId)][ItemPrice], BuyItemGiveCreditsCallback, _, pack);
+	GiveCredits(accountId, -g_items[GetItemIndex(itemId)][ItemPrice], BuyItemGiveCreditsCallback, _, hPack);
 }
 
-public BuyItemGiveCreditsCallback(accountId, any:pack)
+public BuyItemGiveCreditsCallback(accountId, credits, any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new itemId = ReadPackCell(pack);
-	GiveItem(accountId, itemId, Store_Shop, BuyItemGiveItemCallback, _, pack);
+	new itemId = ReadPackCell(hPack);
+	GiveItem(accountId, itemId, Store_Shop, BuyItemGiveItemCallback, _, hPack);
 }
 
-public BuyItemGiveItemCallback(accountId, any:pack)
+public BuyItemGiveItemCallback(accountId, any:hPack)
 {
-	ResetPack(pack);
-	ReadPackCell(pack);
-	ReadPackCell(pack);
+	ResetPack(hPack);
+	ReadPackCell(hPack);
+	ReadPackCell(hPack);
 	
-	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_BuyItemCallback:callback = Store_BuyItemCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(1);
@@ -898,34 +920,35 @@ public BuyItemGiveItemCallback(accountId, any:pack)
 
 RemoveUserItem(accountId, itemId, Store_UseItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId);
-	WritePackCell(pack, itemId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, accountId);
+	WritePackCell(hPack, itemId);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
-	UnequipItem(accountId, itemId, -1, RemoveUserItemUnnequipCallback, _, pack);
+	UnequipItem(accountId, itemId, -1, RemoveUserItemUnnequipCallback, _, hPack);
 }
 
-public RemoveUserItemUnnequipCallback(accountId, itemId, loadoutId, any:pack)
+public RemoveUserItemUnnequipCallback(accountId, itemId, loadoutId, any:hPack)
 {
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "DELETE FROM store_users_items WHERE store_users_items.item_id = %d AND store_users_items.user_id IN (SELECT store_users.id FROM store_users WHERE store_users.auth = %d) LIMIT 1", itemId, accountId);
-	SQL_TQuery(g_hSQL, T_RemoveUserItemCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_RemoveUserItemCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] RemoveUserItemUnequipCallback - %s", sQuery);
 }
 
-public T_RemoveUserItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_RemoveUserItemCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new accountId = ReadPackCell(pack);
-	new itemId = ReadPackCell(pack);
-	new Store_UseItemCallback:callback = Store_UseItemCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new accountId = ReadPackCell(hPack);
+	new itemId = ReadPackCell(hPack);
+	new Store_UseItemCallback:callback = Store_UseItemCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -951,36 +974,37 @@ SetItemEquippedState(accountId, itemId, loadoutId, bool:isEquipped, Store_EquipI
 
 EquipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId);
-	WritePackCell(pack, itemId);
-	WritePackCell(pack, loadoutId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, accountId);
+	WritePackCell(hPack, itemId);
+	WritePackCell(hPack, loadoutId);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
-	UnequipItem(accountId, itemId, loadoutId, EquipUnequipItemCallback, _, pack);
+	UnequipItem(accountId, itemId, loadoutId, EquipUnequipItemCallback, _, hPack);
 }
 
-public EquipUnequipItemCallback(accountId, itemId, loadoutId, any:pack)
+public EquipUnequipItemCallback(accountId, itemId, loadoutId, any:hPack)
 {
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "INSERT INTO store_users_items_loadouts (loadout_id, useritem_id) SELECT %d AS loadout_id, store_users_items.id FROM store_users_items INNER JOIN store_users ON store_users.id = store_users_items.user_id WHERE store_users.auth = %d AND store_users_items.item_id = %d LIMIT 1", loadoutId, accountId, itemId);
-	SQL_TQuery(g_hSQL, T_EquipItemCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_EquipItemCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] EquipUnequipItemCallback - %s", sQuery);
 }
 
-public T_EquipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_EquipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new accountId = ReadPackCell(pack);
-	new itemId = ReadPackCell(pack);
-	new loadoutId = ReadPackCell(pack);
-	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new accountId = ReadPackCell(hPack);
+	new itemId = ReadPackCell(hPack);
+	new loadoutId = ReadPackCell(hPack);
+	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -998,13 +1022,13 @@ public T_EquipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:
 
 UnequipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId);
-	WritePackCell(pack, itemId);
-	WritePackCell(pack, loadoutId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, accountId);
+	WritePackCell(hPack, itemId);
+	WritePackCell(hPack, loadoutId);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "DELETE store_users_items_loadouts FROM store_users_items_loadouts INNER JOIN store_users_items ON store_users_items.id = store_users_items_loadouts.useritem_id INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_items ON store_items.id = store_users_items.item_id WHERE store_users.auth = %d AND store_items.loadout_slot = (SELECT loadout_slot from store_items WHERE store_items.id = %d)", accountId, itemId);
@@ -1014,21 +1038,22 @@ UnequipItem(accountId, itemId, loadoutId, Store_EquipItemCallback:callback, Hand
 		Format(sQuery, sizeof(sQuery), "%s AND store_users_items_loadouts.loadout_id = %d", sQuery, loadoutId);
 	}
 
-	SQL_TQuery(g_hSQL, T_UnequipItemCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_UnequipItemCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] UnequipItem - %s", sQuery);
 }
 
-public T_UnequipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_UnequipItemCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new accountId = ReadPackCell(pack);
-	new itemId = ReadPackCell(pack);
-	new loadoutId = ReadPackCell(pack);
-	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new accountId = ReadPackCell(hPack);
+	new itemId = ReadPackCell(hPack);
+	new loadoutId = ReadPackCell(hPack);
+	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -1046,25 +1071,26 @@ public T_UnequipItemCallback(Handle:owner, Handle:hndl, const String:error[], an
 
 GetEquippedItemsByType(accountId, const String:type[], loadoutId, Store_GetItemsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 	
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "SELECT store_items.id FROM store_users_items INNER JOIN store_items ON store_items.id = store_users_items.item_id INNER JOIN store_users ON store_users.id = store_users_items.user_id INNER JOIN store_users_items_loadouts ON store_users_items_loadouts.useritem_id = store_users_items.id WHERE store_users.auth = %d AND store_items.type = '%s' AND store_users_items_loadouts.loadout_id = %d", accountId, type, loadoutId);
-	SQL_TQuery(g_hSQL, T_GetEquippedItemsByTypeCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_GetEquippedItemsByTypeCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] GetEquippedItemsByType - %s", sQuery);
 }
 
-public T_GetEquippedItemsByTypeCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GetEquippedItemsByTypeCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new Store_GetItemsCallback:callback = Store_GetItemsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -1091,27 +1117,30 @@ public T_GetEquippedItemsByTypeCallback(Handle:owner, Handle:hndl, const String:
 
 GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, accountId);
+	WritePackCell(hPack, credits);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits + %d WHERE auth = %d", credits, accountId);
-	SQL_TQuery(g_hSQL, T_GiveCreditsCallback, sQuery, pack);
+	SQL_TQuery(g_hSQL, T_GiveCreditsCallback, sQuery, hPack);
+	Store_LogTrace("[SQL Query] GiveCredits - %s", sQuery);
 }
 
-public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new accountId = ReadPackCell(pack);
-	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new accountId = ReadPackCell(hPack);
+	new credits = ReadPackCell(hPack);
+	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -1123,6 +1152,7 @@ public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], an
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
+		Call_PushCell(credits);
 		Call_PushCell(_:arg);
 		Call_Finish();
 	}
@@ -1130,35 +1160,50 @@ public T_GiveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], an
 
 RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, accountId);
+	WritePackCell(hPack, credits);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
+	
+	Store_LogDebug("Native - RemoveCredits - accountId = %d, credits = %d", accountId, credits);
+	
+	new bool:bIsNegative = false;
 	
 	if (Store_GetCreditsEx(accountId) < credits)
 	{
+		bIsNegative = true;
+		WritePackCell(hPack, bIsNegative);
+		
 		new String:sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = %d WHERE auth = %d", 0, accountId);
-		SQL_TQuery(g_hSQL, T_RemoveCreditsCallback, sQuery, pack);
+		SQL_TQuery(g_hSQL, T_RemoveCreditsCallback, sQuery, hPack);
+		Store_LogTrace("[SQL Query] RemoveCredits [Less than 0] - %s", sQuery);
+		
 		return;
 	}
+	
+	WritePackCell(hPack, bIsNegative);
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits - %d WHERE auth = %d", credits, accountId);
-	SQL_TQuery(g_hSQL, T_RemoveCreditsCallback, sQuery, pack);
+	SQL_TQuery(g_hSQL, T_RemoveCreditsCallback, sQuery, hPack);
+	Store_LogTrace("[SQL Query] RemoveCredits - %s", sQuery);
 }
 
-public T_RemoveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_RemoveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new accountId = ReadPackCell(pack);
-	new Store_RemoveCreditsCallback:callback = Store_RemoveCreditsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new accountId = ReadPackCell(hPack);
+	new credits = ReadPackCell(hPack);
+	new Store_RemoveCreditsCallback:callback = Store_RemoveCreditsCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
+	new bIsNegative = ReadPackCell(hPack);
 
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -1170,18 +1215,20 @@ public T_RemoveCreditsCallback(Handle:owner, Handle:hndl, const String:error[], 
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
+		Call_PushCell(credits);
+		Call_PushCell(bIsNegative);
 		Call_PushCell(_:arg);
 		Call_Finish();
 	}
 }
 
-GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_GiveCreditsCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
+GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_AccountCallback:callback, Handle:plugin = INVALID_HANDLE, any:data = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, accountId);
-	WritePackFunction(pack, callback);
-	WritePackCell(pack, _:plugin);
-	WritePackCell(pack, _:data);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, accountId);
+	WritePackFunction(hPack, callback);
+	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, _:data);
 
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "INSERT INTO store_users_items (user_id, item_id, acquire_date, acquire_method) SELECT store_users.id AS userId, '%d' AS item_id, NOW() as acquire_date, ", itemId);
@@ -1197,19 +1244,20 @@ GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, S
 	}
 
 	Format(sQuery, sizeof(sQuery), "%s AS acquire_method FROM store_users WHERE auth = %d", sQuery, accountId);
-	SQL_TQuery(g_hSQL, T_GiveItemCallback, sQuery, pack, DBPrio_High);
+	SQL_TQuery(g_hSQL, T_GiveItemCallback, sQuery, hPack, DBPrio_High);
+	Store_LogTrace("[SQL Query] GiveItem - %s", sQuery);
 }
 
-public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:pack)
+public T_GiveItemCallback(Handle:owner, Handle:hndl, const String:error[], any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new accountId = ReadPackCell(pack);
-	new Store_GiveCreditsCallback:callback = Store_GiveCreditsCallback:ReadPackFunction(pack);
-	new Handle:plugin = Handle:ReadPackCell(pack);
-	new arg = ReadPackCell(pack);
+	new accountId = ReadPackCell(hPack);
+	new Store_AccountCallback:callback = Store_AccountCallback:ReadPackFunction(hPack);
+	new Handle:plugin = Handle:ReadPackCell(hPack);
+	new arg = ReadPackCell(hPack);
 	
-	CloseHandle(pack);
+	CloseHandle(hPack);
 	
 	if (hndl == INVALID_HANDLE)
 	{
@@ -1248,6 +1296,7 @@ GiveCreditsToUsers(accountIds[], accountIdsLength, credits)
 
 	Format(sQuery, sizeof(sQuery), "%s)", sQuery);
 	SQL_TQuery(g_hSQL, T_GiveCreditsToUsersCallback, sQuery);
+	Store_LogTrace("[SQL Query] GiveCreditsToUsers - %s", sQuery);
 }
 
 public T_GiveCreditsToUsersCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
@@ -1255,6 +1304,40 @@ public T_GiveCreditsToUsersCallback(Handle:owner, Handle:hndl, const String:erro
 	if (hndl == INVALID_HANDLE)
 	{
 		Store_LogError("SQL Error on GiveCreditsToUsers: %s", error);
+	}
+}
+
+RemoveCreditsFromUsers(accountIds[], accountIdsLength, credits)
+{
+	if (accountIdsLength == 0)
+	{
+		return;
+	}
+	
+	new String:sQuery[MAX_QUERY_SIZES];
+	Format(sQuery, sizeof(sQuery), "UPDATE store_users SET credits = credits - %d WHERE auth IN (", credits);
+
+	for (new i = 0; i < accountIdsLength; i++)
+	{
+		Format(sQuery, sizeof(sQuery), "%s%d", sQuery, accountIds[i]);
+
+		if (i < accountIdsLength - 1)
+		{
+			Format(sQuery, sizeof(sQuery), "%s, ", sQuery);
+		}
+	}
+
+	Format(sQuery, sizeof(sQuery), "%s)", sQuery);
+	SQL_TQuery(g_hSQL, T_RemoveCreditsFromUsersCallback, sQuery);
+	Store_LogTrace("[SQL Query] RemoveCreditsFromUsers - %s", sQuery);
+}
+
+public T_RemoveCreditsFromUsersCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
+{
+	if (hndl == INVALID_HANDLE)
+	{
+		Store_LogError("SQL Error on RemoveCreditsFromUsers: %s", error);
+		return;
 	}
 }
 
@@ -1287,6 +1370,7 @@ GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits[])
 
 	Format(sQuery, sizeof(sQuery), "%s)", sQuery);
 	SQL_TQuery(g_hSQL, T_GiveDifferentCreditsToUsersCallback, sQuery);
+	Store_LogTrace("[SQL Query] GiveDifferentCreditsToUsers - %s", sQuery);
 }
 
 public T_GiveDifferentCreditsToUsersCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
@@ -1359,7 +1443,7 @@ public Action:Command_ReloadItems(client, args)
 {
 	if (client != 0)
 	{
-		CPrintToChat(client, "%s%t", STORE_PREFIX, "Check console for reload outputs");
+		CPrintToChat(client, "%t%t", "Store Tag Colored", "Check console for reload outputs");
 	}
 	
 	RequestFrame(Frame_ReloadItems, client);
@@ -1368,8 +1452,15 @@ public Action:Command_ReloadItems(client, args)
 
 public Frame_ReloadItems(any:client)
 {
-	CReplyToCommand(client, "%s%t", (client != 0) ? STORE_PREFIX : STORE_PREFIX_NOCOLOR, "Reloading categories and items");
+	CReplyToCommand(client, "%t%t", (client != 0) ? "Store Tag Colored" : "Store Tag", "Reloading categories and items");
 	ReloadItemCache(client);
+}
+
+public Action:Command_TestCreditsNative(client, args)
+{
+	new credits = Store_GetCreditsEx(GetSteamAccountID(client));
+	PrintToChat(client, "credits = %d", credits);
+	return Plugin_Handled;
 }
 
 public Native_Register(Handle:plugin, params)
@@ -1724,7 +1815,7 @@ public Native_GiveItem(Handle:plugin, params)
 		data = GetNativeCell(5);
 	}
 	
-	GiveItem(GetNativeCell(1), GetNativeCell(2), Store_AcquireMethod:GetNativeCell(3), Store_GiveCreditsCallback:GetNativeFunction(4), plugin, data);
+	GiveItem(GetNativeCell(1), GetNativeCell(2), Store_AcquireMethod:GetNativeCell(3), Store_AccountCallback:GetNativeFunction(4), plugin, data);
 }
 
 public Native_GiveDifferentCreditsToUsers(Handle:plugin, params)
@@ -1750,6 +1841,16 @@ public Native_RemoveCredits(Handle:plugin, params)
 	}
 
 	RemoveCredits(GetNativeCell(1), GetNativeCell(2), Store_RemoveCreditsCallback:GetNativeFunction(3), plugin, data);
+}
+
+public Native_RemoveCreditsFromUsers(Handle:plugin, params)
+{
+	new length = GetNativeCell(2);
+
+	new accountIds[length];
+	GetNativeArray(1, accountIds, length);
+
+	RemoveCreditsFromUsers(accountIds, length, GetNativeCell(3));
 }
 
 public Native_ReloadItemCache(Handle:plugin, params)
@@ -1786,6 +1887,7 @@ public Native_RegisterPluginModule(Handle:plugin, params)
 	new String:sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), "INSERT INTO store_versions (mod_name, mod_description, mod_ver_convar, mod_ver_number, server_id, last_updated) VALUES ('%s', '%s', '%s', '%s', '%d', NOW()) ON DUPLICATE KEY UPDATE mod_name = VALUES(mod_name), mod_description = VALUES(mod_description), mod_ver_convar = VALUES(mod_ver_convar), mod_ver_number = VALUES(mod_ver_number), server_id = VALUES(server_id), last_updated = NOW();", sName, sDescription, sVersion_ConVar, sVersion, Store_GetServerID());
 	SQL_TQuery(g_hSQL, T_RegisterPluginModuleCallback, sQuery);
+	Store_LogTrace("[SQL Query] RegisterPluginModule - %s", sQuery);
 }
 
 public T_RegisterPluginModuleCallback(Handle:owner, Handle:hndl, const String:error[], any:data)
@@ -1815,6 +1917,7 @@ public Native_SQLTQuery(Handle:plugin, params)
 	WritePackCell(hPack, data);
 	
 	SQL_TQuery(g_hSQL, Query_Callback, sQuery, hPack, prio);
+	Store_LogTrace("[SQL Query] Store_TQuery - %s", sQuery);
 }
 
 public Query_Callback(Handle:owner, Handle:hndl, const String:error[], any:data)
@@ -1823,7 +1926,7 @@ public Query_Callback(Handle:owner, Handle:hndl, const String:error[], any:data)
 	
 	new Handle:plugin = Handle:ReadPackCell(data);
 	new SQLTCallback:callback = SQLTCallback:ReadPackFunction(data);
-	new pack = ReadPackCell(data);
+	new hPack = ReadPackCell(data);
 	
 	CloseHandle(data);
 	
@@ -1831,6 +1934,6 @@ public Query_Callback(Handle:owner, Handle:hndl, const String:error[], any:data)
 	Call_PushCell(owner);
 	Call_PushCell(hndl);
 	Call_PushString(error);
-	Call_PushCell(pack);
+	Call_PushCell(hPack);
 	Call_Finish();
 }

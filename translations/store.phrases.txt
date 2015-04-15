@@ -1,5 +1,17 @@
 "Phrases"
 {
+	"Store Tag"
+	{
+		"#format"			""
+		"en"				"[Store] "
+	}
+	
+	"Store Tag Colored"
+	{
+		"#format"			""
+		"en"				"{GREEN}[Store] {DEFAULT}"
+	}
+	
 	"Store Menu Title"
 	{
 		"#format"			"{1:s}"
@@ -106,6 +118,18 @@
 	{
 		"#format"			"{1:d},{2:s}"
 		"en"				"You have just received {1} {2}!"
+	}
+	
+	"Deducted Credits"
+	{
+		"#format"			"{1:d},{2:s}"
+		"en"				"You have just been deducted {1} {2}!"
+	}
+	
+	"Deducted Credits Less Than Zero"
+	{
+		"#format"			"{1:s}"
+		"en"				"Your {1} has been set to 0 due to going into the negative!"
 	}
 
 	"Item Purchase Confirmation"

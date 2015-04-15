@@ -32,6 +32,7 @@ new String:g_sELogLevel[6][32] =
 	"error"
 };
 
+//Config Globals
 new String:sLoggingPath[PLATFORM_MAX_PATH];
 new String:sLoggingFilename[64];
 new String:sDateFormat[12];

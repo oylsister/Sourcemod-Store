@@ -4,10 +4,8 @@
 #define _store_core_included
 
 #define STORE_AUTHORS "Alongub | Keith Warren(Drixevel) | Arrow768"
-#define STORE_PREFIX "{GREEN}[Store] {DEFAULT}"
-#define STORE_PREFIX_NOCOLOR "[Store] "
 #define STORE_URL "https://github.com/alongubkin/store"
-#define STORE_VERSION "1.2.3a"
+#define STORE_VERSION "1.2.4"
 
 typeset Store_MenuItemClickCallback
 {

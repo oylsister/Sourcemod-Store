@@ -7,11 +7,13 @@
 #define PLUGIN_DESCRIPTION "Refunds module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_refunds_version"
 
-new String:g_currencyName[64];
-
-new Float:g_refundPricePercentage;
+//Config Globals
+new Float:g_refundPricePercentage = 0.5;
 new bool:g_confirmItemRefund = true;
-new bool:g_hideMenuItemDescriptions = false;
+new bool:g_ShowMenuDescriptions = true;
+new bool:g_showMenuItemDescriptions = true;
+
+new String:g_currencyName[64];
 
 public Plugin:myinfo =
 {
@@ -66,7 +68,8 @@ LoadConfig()
 	
 	g_refundPricePercentage = KvGetFloat(kv, "refund_price_percentage", 0.5);
 	g_confirmItemRefund = bool:KvGetNum(kv, "confirm_item_refund", 1);
-	g_hideMenuItemDescriptions = bool:KvGetNum(kv, "hide_menu_descriptions", 0);
+	g_ShowMenuDescriptions = bool:KvGetNum(kv, "show_menu_descriptions", 1);
+	g_showMenuItemDescriptions = bool:KvGetNum(kv, "show_menu_item_descriptions", 1);
 
 	CloseHandle(kv);
 	
@@ -90,12 +93,12 @@ OpenRefundMenu(client)
 		return;
 	}
 	
-	Store_GetCategories(GetCategoriesCallback, true, "", GetClientSerial(client));
+	Store_GetCategories(GetCategoriesCallback, true, "", GetClientUserId(client));
 }
 
-public GetCategoriesCallback(ids[], count, any:serial)
+public GetCategoriesCallback(ids[], count, any:data)
 {		
-	new client = GetClientFromSerial(serial);
+	new client = GetClientOfUserId(data);
 	
 	if (!client)
 	{
@@ -104,7 +107,7 @@ public GetCategoriesCallback(ids[], count, any:serial)
 	
 	if (count < 1)
 	{
-		CPrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
+		CPrintToChat(client, "%t%t", "Store Tag Colored", "No categories available");
 		return;
 	}
 		
@@ -122,27 +125,24 @@ public GetCategoriesCallback(ids[], count, any:serial)
 			continue;
 		}
 			
-		new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
-		Store_GetCategoryDisplayName(ids[category], displayName, sizeof(displayName));
+		new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		Store_GetCategoryDisplayName(ids[category], sDisplayName, sizeof(sDisplayName));
 
-		new String:description[STORE_MAX_DESCRIPTION_LENGTH];
+		new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		Store_GetCategoryDescription(ids[category], sDescription, sizeof(sDescription));
 
-		new String:itemText[sizeof(displayName) + 1 + sizeof(description)];
+		new String:sDisplay[sizeof(sDisplayName) + 1 + sizeof(sDescription)];
+		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
 		
-		if (!g_hideMenuItemDescriptions)
+		if (g_ShowMenuDescriptions)
 		{
-			Store_GetCategoryDescription(ids[category], description, sizeof(description));
-			Format(itemText, sizeof(itemText), "%s\n%s", displayName, description);
-		}
-		else
-		{
-			Format(itemText, sizeof(itemText), "%s", displayName);
+			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplayName, sDescription);
 		}
 		
-		new String:itemValue[8];
-		IntToString(ids[category], itemValue, sizeof(itemValue));
+		new String:sItem[12];
+		IntToString(ids[category], sItem, sizeof(sItem));
 		
-		AddMenuItem(menu, itemValue, itemText);
+		AddMenuItem(menu, sItem, sDisplay);
 		bNoCategories = false;
 	}
 	
@@ -151,7 +151,7 @@ public GetCategoriesCallback(ids[], count, any:serial)
 	
 	if (bNoCategories)
 	{
-		CPrintToChat(client, "%s%t", STORE_PREFIX, "No categories available");
+		CPrintToChat(client, "%t%t", "Store Tag Colored", "No categories available");
 	}
 }
 
@@ -178,38 +178,36 @@ public RefundMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 
 OpenRefundCategory(client, categoryId, slot = 0)
 {
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, GetClientSerial(client));
-	WritePackCell(pack, categoryId);
-	WritePackCell(pack, slot);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, GetClientUserId(client));
+	WritePackCell(hPack, categoryId);
+	WritePackCell(hPack, slot);
 
 	new Handle:filter = CreateTrie();
 	SetTrieValue(filter, "is_refundable", 1);
 	SetTrieValue(filter, "category_id", categoryId);
 
-	Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientLoadout(client), GetUserItemsCallback, pack);
+	Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientLoadout(client), GetUserItemsCallback, hPack);
 }
 
-public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutId, any:pack)
+public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutId, any:hPack)
 {	
-	ResetPack(pack);
+	ResetPack(hPack);
 	
-	new serial = ReadPackCell(pack);
-	new categoryId = ReadPackCell(pack);
-	new slot = ReadPackCell(pack);
+	new client = GetClientOfUserId(ReadPackCell(hPack));
+	new categoryId = ReadPackCell(hPack);
+	new slot = ReadPackCell(hPack);
 	
-	CloseHandle(pack);
-	
-	new client = GetClientFromSerial(serial);
-	
-	if (!client)
+	CloseHandle(hPack);
+		
+	if (!client || !IsClientInGame(client))
 	{
 		return;
 	}
 		
 	if (count == 0)
 	{
-		CPrintToChat(client, "%s%t", STORE_PREFIX, "No items in this category");
+		CPrintToChat(client, "%t%t", "Store Tag Colored", "No items in this category");
 		OpenRefundMenu(client);
 		
 		return;
@@ -223,36 +221,42 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	
 	for (new item = 0; item < count; item++)
 	{
-		// TODO: Option to display descriptions	
-		new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
-		Store_GetItemDisplayName(ids[item], displayName, sizeof(displayName));
+		new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		Store_GetItemDisplayName(ids[item], sDisplayName, sizeof(sDisplayName));
 		
-		new String:text[4 + sizeof(displayName) + 6];
-		Format(text, sizeof(text), "%s%s", text, displayName);
+		new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		Store_GetItemDescription(ids[item], sDescription, sizeof(sDescription));
+		
+		new String:sDisplay[4 + sizeof(sDisplayName) + sizeof(sDescription)+ 6];
+		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
 		
 		if (itemCount[item] > 1)
 		{
-			Format(text, sizeof(text), "%s (%d)", text, itemCount[item]);
+			Format(sDisplay, sizeof(sDisplay), "%s (%d)", sDisplay, itemCount[item]);
 		}
 		
-		Format(text, sizeof(text), "%s - %d %s", text, RoundToZero(Store_GetItemPrice(ids[item]) * g_refundPricePercentage), g_currencyName);
-
-		new String:value[8];
-		IntToString(ids[item], value, sizeof(value));
+		Format(sDisplay, sizeof(sDisplay), "%s - %d %s", sDisplay, RoundToZero(Store_GetItemPrice(ids[item]) * g_refundPricePercentage), g_currencyName);
 		
-		AddMenuItem(menu, value, text);    
+		if (g_showMenuItemDescriptions && strlen(sDisplay) != 0)
+		{
+			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
+		}
+		
+		new String:sItem[12];
+		IntToString(ids[item], sItem, sizeof(sItem));
+		
+		AddMenuItem(menu, sItem, sDisplay);    
 	}
 
 	SetMenuExitBackButton(menu, true);
 	
-	if (slot == 0)
+	if (slot != 0)
 	{
-		DisplayMenu(menu, client, 0);   
+		DisplayMenuAtItem(menu, client, slot, MENU_TIME_FOREVER);
+		return;
 	}
-	else
-	{
-		DisplayMenuAtItem(menu, client, slot, 0);
-	}
+	
+	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
 public RefundCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
@@ -267,7 +271,7 @@ public RefundCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, sl
 				switch (g_confirmItemRefund)
 				{
 					case true: DisplayConfirmationMenu(client, StringToInt(sMenuItem));
-					case false: Store_RemoveUserItem(GetSteamAccountID(client), StringToInt(sMenuItem), OnRemoveUserItemComplete, GetClientSerial(client));
+					case false: Store_RemoveUserItem(GetSteamAccountID(client), StringToInt(sMenuItem), OnRemoveUserItemComplete, GetClientUserId(client));
 				}
 			}
 		case MenuAction_Cancel: OpenRefundMenu(client);
@@ -308,7 +312,7 @@ public ConfirmationMenuSelectHandle(Handle:menu, MenuAction:action, client, slot
 				}
 				else
 				{
-					Store_RemoveUserItem(GetSteamAccountID(client), StringToInt(sMenuItem), OnRemoveUserItemComplete, GetClientSerial(client));
+					Store_RemoveUserItem(GetSteamAccountID(client), StringToInt(sMenuItem), OnRemoveUserItemComplete, GetClientUserId(client));
 				}
 			}
 		case MenuAction_DisplayItem:
@@ -328,9 +332,9 @@ public ConfirmationMenuSelectHandle(Handle:menu, MenuAction:action, client, slot
 	return false;
 }
 
-public OnRemoveUserItemComplete(accountId, itemId, any:serial)
+public OnRemoveUserItemComplete(accountId, itemId, any:data)
 {
-	new client = GetClientFromSerial(serial);
+	new client = GetClientOfUserId(data);
 
 	if (client == 0)
 	{
@@ -339,34 +343,30 @@ public OnRemoveUserItemComplete(accountId, itemId, any:serial)
 	
 	new credits = RoundToZero(Store_GetItemPrice(itemId) * g_refundPricePercentage);
 
-	new Handle:pack = CreateDataPack();
-	WritePackCell(pack, GetClientSerial(client));
-	WritePackCell(pack, credits);
-	WritePackCell(pack, itemId);
+	new Handle:hPack = CreateDataPack();
+	WritePackCell(hPack, GetClientUserId(client));
+	WritePackCell(hPack, itemId);
 
-	Store_GiveCredits(accountId, credits, OnGiveCreditsComplete, pack);
+	Store_GiveCredits(accountId, credits, OnGiveCreditsComplete, hPack);
 }
 
-public OnGiveCreditsComplete(accountId, any:pack)
+public OnGiveCreditsComplete(accountId, credits, any:hPack)
 {
-	ResetPack(pack);
+	ResetPack(hPack);
 
-	new serial = ReadPackCell(pack);
-	new credits = ReadPackCell(pack);
-	new itemId = ReadPackCell(pack);
+	new client = GetClientOfUserId(ReadPackCell(hPack));
+	new itemId = ReadPackCell(hPack);
 
-	CloseHandle(pack);
-
-	new client = GetClientFromSerial(serial);
+	CloseHandle(hPack);
 	
-	if (client == 0)
+	if (!client || !IsClientInGame(client))
 	{
 		return;
 	}
 	
 	new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 	Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
-	CPrintToChat(client, "%s%t", STORE_PREFIX, "Refund Message", displayName, credits, g_currencyName);
+	CPrintToChat(client, "%t%t", "Store Tag Colored", "Refund Message", displayName, credits, g_currencyName);
 
 	OpenRefundMenu(client);
 }

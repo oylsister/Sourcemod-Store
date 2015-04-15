@@ -24,9 +24,11 @@ typeset Store_ItemGetAttributesCallback
 	function void(const char[] itemName, const char[] attrs, any data);
 }
 
+typedef Store_AccountCallback = function void(int accountId, any data);
+
 typedef Store_GetCreditsCallback = function void(int credits, any data);
-typedef Store_GiveCreditsCallback = function void(int accountId, any data);
-typedef Store_RemoveCreditsCallback = function void(int accountId, any data);
+typedef Store_GiveCreditsCallback = function void(int accountId, int credits, any data);
+typedef Store_RemoveCreditsCallback = function void(int accountId, int credits, bool bIsNegative, any data);
 
 typedef Store_BuyItemCallback = function void(bool success, any data);
 typedef Store_EquipItemCallback = function void(int accountId, int itemId, int loadoutId, any data);
@@ -701,6 +703,7 @@ native Store_GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits
  * As with all other store-backend methods, this method is completely asynchronous.
  *
  * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
+ * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
  * @param credits           The amount of credits to remove from the player.
  * @param callback		    A callback which will be called when the operation is finished.
  * @param data              Extra data value to pass to the callback.
@@ -708,6 +711,22 @@ native Store_GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits
  * @noreturn
  */
 native Store_RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
+
+/**
+ * Removes multiple players a specific amount of credits. 
+ * 
+ * You can also set the credits parameter to a positive value to give credits
+ * to the players.
+ *
+ * As with all other store-backend methods, this method is completely asynchronous.
+ *
+ * @param accountIds	    The account IDs of the players, use GetSteamAccountID to convert a client index to account ID.
+ * @param accountIdsLength  Players count.
+ * @param credits           The amount of credits to remove from the players.
+ *
+ * @noreturn
+ */
+native Store_RemoveCreditsFromUsers(accountIds[], accountIdsLength, credits);
 
 /**
  * Gives player an item.
@@ -723,7 +742,7 @@ native Store_RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callb
  *
  * @noreturn
  */
-native Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_GiveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
+native Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_AccountCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Buys an item for a player, using his credits.
@@ -900,6 +919,7 @@ public __pl_store_backend_SetNTVOptional()
 	MarkNativeAsOptional("Store_GiveDifferentCreditsToUsers");
 	
 	MarkNativeAsOptional("Store_RemoveCredits");
+	MarkNativeAsOptional("Store_RemoveCreditsFromUsers");
 
 	MarkNativeAsOptional("Store_BuyItem");
 	MarkNativeAsOptional("Store_RemoveUserItem");

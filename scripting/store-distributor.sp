@@ -25,12 +25,11 @@ enum Filter
 
 new String:g_currencyName[64];
 
-new Float:g_timeInSeconds;
-new bool:g_enableMessagePerTick;
-
-new g_baseMinimum;
-new g_baseMaximum;
-
+//Config Globals
+new Float:g_timeInSeconds = 180.0;
+new bool:g_enableMessagePerTick = true;
+new g_baseMinimum = 1;
+new g_baseMaximum = 3;
 new g_filters[MAX_FILTERS][Filter];
 new g_filterCount;
 
@@ -78,7 +77,7 @@ LoadConfig()
 	}
 
 	g_timeInSeconds = KvGetFloat(kv, "time_per_distribute", 180.0);
-	g_enableMessagePerTick = bool:KvGetNum(kv, "enable_message_per_distribute", 0);
+	g_enableMessagePerTick = bool:KvGetNum(kv, "enable_message_per_distribute", 1);
 
 	if (KvJumpToKey(kv, "distribution"))
 	{
@@ -138,18 +137,17 @@ public Action:ForgivePoints(Handle:timer)
 
 	for (new i = 1; i <= MaxClients; i++)
 	{
-		if (IsClientInGame(i) && !IsFakeClient(i) && !IsClientObserver(i))
+		if (!IsClientInGame(i) || IsFakeClient(i) || IsClientObserver(i)) continue;
+		
+		accountIds[count] = GetSteamAccountID(i);
+		credits[count] = Calculate(i, map, clientCount);
+		
+		if (g_enableMessagePerTick)
 		{
-			accountIds[count] = GetSteamAccountID(i);
-			credits[count] = Calculate(i, map, clientCount);
-
-			if (g_enableMessagePerTick)
-			{
-				CPrintToChat(i, "%s%t", STORE_PREFIX, "Received Credits", credits[count], g_currencyName);
-			}
-
-			count++;
+			CPrintToChat(i, "%t%t", "Store Tag Colored", "Received Credits", credits[count], g_currencyName);
 		}
+		
+		count++;
 	}
 
 	Store_GiveDifferentCreditsToUsers(accountIds, count, credits);

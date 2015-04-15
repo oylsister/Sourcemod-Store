@@ -11,6 +11,8 @@
 #define PLUGIN_DESCRIPTION "Loadouts module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_loadouts_version"
 
+//Config Globals
+
 stock const String:TF2_ClassName[TFClassType][] = {"", "scout", "sniper", "soldier", "demoman", "medic", "heavy", "pyro", "spy", "engineer" };
 
 new Handle:g_clientLoadoutChangedForward;
@@ -252,12 +254,12 @@ FindOptimalLoadoutFor(client)
 		SetTrieString(filter, "class", className);
 	}
 	
-	Store_GetLoadouts(filter, FindOptimalLoadoutCallback, true, GetClientSerial(client));
+	Store_GetLoadouts(filter, FindOptimalLoadoutCallback, true, GetClientUserId(client));
 }
 
-public FindOptimalLoadoutCallback(ids[], count, any:serial)
+public FindOptimalLoadoutCallback(ids[], count, any:data)
 {
-	new client = GetClientFromSerial(serial);
+	new client = GetClientOfUserId(data);
 	
 	if (!client)
 	{

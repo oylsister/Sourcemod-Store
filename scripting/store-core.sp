@@ -28,8 +28,12 @@ enum ChatCommand
 	Store_ChatCommandCallback:ChatCommandCallback,
 }
 
+//Config Globals
 new String:g_currencyName[64];
 new String:g_sqlconfigentry[64];
+new g_firstConnectionCredits = 0;
+new bool:g_hideMenuItemDescriptions = false;
+new g_serverID = -1;
 
 new g_chatCommands[MAX_CHAT_COMMANDS + 1][ChatCommand];
 new g_chatCommandCount = 0;
@@ -37,16 +41,11 @@ new g_chatCommandCount = 0;
 new g_menuItems[MAX_MENU_ITEMS + 1][MenuItem];
 new g_menuItemCount = 0;
 
-new g_firstConnectionCredits = 0;
-
 new bool:g_allPluginsLoaded = false;
 
 new Handle:g_hOnChatCommandForward;
 new Handle:g_hOnChatCommandPostForward;
 new Handle:g_hOnCoreLoaded;
-
-new bool:g_hideMenuItemDescriptions = false;
-new g_serverID = -1;
 
 new bool:bLateLoad;
 
@@ -88,8 +87,8 @@ public OnPluginStart()
 	
 	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
 	
-	RegAdminCmd("store_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
-	RegAdminCmd("sm_store_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
+	RegAdminCmd("sm_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
+	RegAdminCmd("sm_removecredits", Command_RemoveCredits, ADMFLAG_ROOT, "Remove credits from a player.");
 
 	g_allPluginsLoaded = false;
 	
@@ -113,7 +112,7 @@ public OnAllPluginsLoaded()
 	
 	if (g_serverID > 0)
 	{
-		PrintToServer("%s This plugin has been assigned the ID '%i'.", STORE_PREFIX_NOCOLOR, g_serverID);
+		PrintToServer("%t This plugin has been assigned the ID '%i'.", "Store Tag", g_serverID);
 	}
 	else if (g_serverID == 0)
 	{
@@ -130,6 +129,42 @@ public Store_OnDatabaseInitialized()
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
+LoadConfig()
+{
+	new Handle:kv = CreateKeyValues("root");
+
+	new String:path[PLATFORM_MAX_PATH];
+	BuildPath(Path_SM, path, sizeof(path), "configs/store/core.cfg");
+
+	if (!FileToKeyValues(kv, path))
+	{
+		CloseHandle(kv);
+		SetFailState("Can't read config file %s", path);
+	}
+
+	KvGetString(kv, "currency_name", g_currencyName, sizeof(g_currencyName), "Credits");
+	KvGetString(kv, "sql_config_entry", g_sqlconfigentry, sizeof(g_sqlconfigentry), "default");
+
+	if (KvJumpToKey(kv, "Commands"))
+	{
+		new String:buffer[256];
+
+		KvGetString(kv, "mainmenu_commands", buffer, sizeof(buffer), "!store /store");
+		Store_RegisterChatCommands(buffer, ChatCommand_OpenMainMenu);
+
+		KvGetString(kv, "credits_commands", buffer, sizeof(buffer), "!credits /credits");
+		Store_RegisterChatCommands(buffer, ChatCommand_Credits);
+
+		KvGoBack(kv);
+	}
+
+	g_firstConnectionCredits = KvGetNum(kv, "first_connection_credits");
+	g_hideMenuItemDescriptions = bool:KvGetNum(kv, "hide_menu_descriptions", 0);
+	g_serverID = KvGetNum(kv, "server_id", -1);
+
+	CloseHandle(kv);
+}
+
 public OnClientPostAdminCheck(client)
 {
 	Store_RegisterClient(client, g_firstConnectionCredits);
@@ -137,12 +172,11 @@ public OnClientPostAdminCheck(client)
 
 public Action:OnClientSayCommand(client, const String:command[], const String:sArgs[])
 {
-	if (client <= 0 || client > MaxClients)
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	{
 		return Plugin_Continue;
-
-	if (!IsClientInGame(client))
-		return Plugin_Continue;
-
+	}
+	
 	new String:sArgsTrimmed[256];
 	new sArgsLen = strlen(sArgs);
 
@@ -217,89 +251,101 @@ public ChatCommand_Credits(client)
 
 public OnCommandGetCredits(credits, any:client)
 {
-	CPrintToChat(client, "%s%t", STORE_PREFIX, "Store Menu Credits", credits, g_currencyName);
+	CPrintToChat(client, "%t%t", "Store Tag Colored", "Store Menu Credits", credits, g_currencyName);
 }
 
 public Action:Command_GiveCredits(client, args)
 {
 	if (args < 2)
 	{
-		CReplyToCommand(client, "%sUsage: store_givecredits <name> <credits>", STORE_PREFIX);
+		CReplyToCommand(client, "%t Usage: sm_givecredits <target-string> <credits>", "Store Tag Colored");
 		return Plugin_Handled;
 	}
-
+	
 	new String:target[65];
-	new String:target_name[MAX_TARGET_LENGTH];
-	new target_list[MAXPLAYERS];
-	new target_count;
-	new bool:tn_is_ml;
-
 	GetCmdArg(1, target, sizeof(target));
+	
+	new String:sAmount[32];
+	GetCmdArg(2, sAmount, sizeof(sAmount));
+	new iMoney = StringToInt(sAmount);
+	
+	new target_list[MAXPLAYERS];
+	new String:target_name[MAX_TARGET_LENGTH];
+	new bool:tn_is_ml;
+	
+	new target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml);
 
-	new String:money[32];
-	GetCmdArg(2, money, sizeof(money));
-
-	new imoney = StringToInt(money);
-
-	if ((target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml)) <= 0)
+	if (target_count <= 0)
 	{
 		ReplyToTargetError(client, target_count);
 		return Plugin_Handled;
 	}
-
-
+	
 	new accountIds[target_count];
 	new count = 0;
-
+	
 	for (new i = 0; i < target_count; i++)
 	{
-		if (IsClientInGame(target_list[i]) && !IsFakeClient(target_list[i]))
-		{
-			accountIds[count] = GetSteamAccountID(target_list[i]);
-			count++;
+		if (!IsClientInGame(target_list[i]) || IsFakeClient(target_list[i])) continue;
+		accountIds[count] = GetSteamAccountID(target_list[i]);
+		count++;
 
-			CPrintToChat(target_list[i], "%s%t", STORE_PREFIX, "Received Credits", imoney, g_currencyName);
-		}
+		CPrintToChat(target_list[i], "%t%t", "Store Tag Colored", "Received Credits", iMoney, g_currencyName);
 	}
 
-	Store_GiveCreditsToUsers(accountIds, count, imoney);
+	Store_GiveCreditsToUsers(accountIds, count, iMoney);
 	return Plugin_Handled;
 }
 
-LoadConfig()
+public Action:Command_RemoveCredits(client, args)
 {
-	new Handle:kv = CreateKeyValues("root");
-
-	new String:path[PLATFORM_MAX_PATH];
-	BuildPath(Path_SM, path, sizeof(path), "configs/store/core.cfg");
-
-	if (!FileToKeyValues(kv, path))
+	if (args < 2)
 	{
-		CloseHandle(kv);
-		SetFailState("Can't read config file %s", path);
+		CReplyToCommand(client, "%t Usage: sm_removecredits <target-string> <credits>", "Store Tag Colored");
+		return Plugin_Handled;
 	}
+	
+	new String:target[65];
+	GetCmdArg(1, target, sizeof(target));
+	
+	new String:sAmount[32];
+	GetCmdArg(2, sAmount, sizeof(sAmount));
+	new iMoney = StringToInt(sAmount);
+	
+	new target_list[MAXPLAYERS];
+	new String:target_name[MAX_TARGET_LENGTH];
+	new bool:tn_is_ml;
+	
+	new target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml);
 
-	KvGetString(kv, "currency_name", g_currencyName, sizeof(g_currencyName), "Credits");
-	KvGetString(kv, "sql_config_entry", g_sqlconfigentry, sizeof(g_sqlconfigentry), "default");
-
-	if (KvJumpToKey(kv, "Commands"))
+	if (target_count <= 0)
 	{
-		new String:buffer[256];
-
-		KvGetString(kv, "mainmenu_commands", buffer, sizeof(buffer), "!store /store");
-		Store_RegisterChatCommands(buffer, ChatCommand_OpenMainMenu);
-
-		KvGetString(kv, "credits_commands", buffer, sizeof(buffer), "!credits /credits");
-		Store_RegisterChatCommands(buffer, ChatCommand_Credits);
-
-		KvGoBack(kv);
+		ReplyToTargetError(client, target_count);
+		return Plugin_Handled;
 	}
+	
+	for (new i = 0; i < target_count; i++)
+	{
+		if (!IsClientInGame(target_list[i]) || IsFakeClient(target_list[i])) continue;
+		Store_RemoveCredits(GetSteamAccountID(target_list[i]), iMoney, OnRemoveCreditsCallback, GetClientUserId(client));
+	}
+	
+	return Plugin_Handled;
+}
 
-	g_firstConnectionCredits = KvGetNum(kv, "first_connection_credits");
-	g_hideMenuItemDescriptions = bool:KvGetNum(kv, "hide_menu_descriptions", 0);
-	g_serverID = KvGetNum(kv, "server_id", -1);
-
-	CloseHandle(kv);
+public OnRemoveCreditsCallback(accountId, credits, bool:bIsNegative, any:data)
+{
+	new client = GetClientOfUserId(data);
+	
+	if (client && IsClientInGame(client))
+	{
+		CPrintToChat(client, "%t%t", "Store Tag Colored", "Deducted Credits", credits, g_currencyName);
+		
+		if (bIsNegative)
+		{
+			CPrintToChat(client, "%t%t", "Store Tag Colored", "Deducted Credits Less Than Zero", g_currencyName);
+		}
+	}
 }
 
 AddMainMenuItem(bool:bTranslate, const String:displayName[], const String:description[] = "", const String:value[] = "", Handle:plugin = INVALID_HANDLE, Store_MenuItemClickCallback:callback, order = 32)
@@ -353,12 +399,12 @@ SortMainMenuItems()
 
 OpenMainMenu(client)
 {
-	Store_GetCredits(GetSteamAccountID(client), OnGetCreditsComplete, GetClientSerial(client));
+	Store_GetCredits(GetSteamAccountID(client), OnGetCreditsComplete, GetClientUserId(client));
 }
 
-public OnGetCreditsComplete(credits, any:serial)
+public OnGetCreditsComplete(credits, any:data)
 {
-	new client = GetClientFromSerial(serial);
+	new client = GetClientOfUserId(data);
 
 	if (!client)
 	{

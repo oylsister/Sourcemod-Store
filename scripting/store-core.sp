@@ -161,7 +161,7 @@ LoadConfig()
 	g_firstConnectionCredits = KvGetNum(kv, "first_connection_credits");
 	g_hideMenuItemDescriptions = bool:KvGetNum(kv, "hide_menu_descriptions", 0);
 	g_serverID = KvGetNum(kv, "server_id", -1);
-
+	
 	CloseHandle(kv);
 }
 

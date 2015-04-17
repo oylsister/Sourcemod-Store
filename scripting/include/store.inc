@@ -12,3 +12,7 @@
 
 //External Includes
 #include <multicolors>
+
+#define STORE_AUTHORS "Alongub, Keith Warren(Drixevel), Arrow768"
+#define STORE_URL "https://github.com/alongubkin/store"
+#define STORE_VERSION "1.2.4a"

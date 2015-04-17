@@ -295,7 +295,7 @@ public GetItemsCallback(ids[], count, any:hPack)
 
 	CloseHandle(hPack);
 	
-	if (!client || IsClientInGame(client))
+	if (!client || !IsClientInGame(client))
 	{
 		return;
 	}

@@ -63,8 +63,6 @@ new g_itemCount = -1;
 new g_loadouts[MAX_LOADOUTS][Loadout];
 new g_loadoutCount = -1;
 
-new bool:bLateLoad;
-
 public Plugin:myinfo =
 {
 	name = PLUGIN_NAME,
@@ -136,8 +134,6 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	g_reloadItemsPostForward = CreateGlobalForward("Store_OnReloadItemsPost", ET_Event);
 
 	RegPluginLibrary("store-backend");
-	
-	bLateLoad = true;
 	return APLRes_Success;
 }
 
@@ -153,18 +149,14 @@ public OnPluginStart()
 	RegAdminCmd("sm_native_credits", Command_TestCreditsNative, ADMFLAG_RCON);
 }
 
-public OnConfigsExecuted()
-{
-	if (bLateLoad)
-	{
-		Store_LogWarning("ERROR: Please change the map or restart the server, you cannot load reload store-backend while the map is loaded. (CRASH WARNING)");
-		bLateLoad = false;
-	}
-}
-
 public OnAllPluginsLoaded()
 {
 	ConnectSQL();
+}
+
+public OnPluginEnd()
+{
+	Store_LogWarning("WARNING: Please change the map or restart the server, you cannot reload store-backend while the map is loaded. (CRASH WARNING)");
 }
 
 public OnMapStart()

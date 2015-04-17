@@ -4,8 +4,8 @@
 #include <sdkhooks>
 #include <sdktools>
 #include <adminmenu>
-#include <store>
 #include <smartdm>
+#include <store>
 
 #define PLUGIN_NAME "[Store] Gifting Module"
 #define PLUGIN_DESCRIPTION "Gifting module for the Sourcemod Store."

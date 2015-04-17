@@ -3,10 +3,6 @@
 #endif
 #define _store_core_included
 
-#define STORE_AUTHORS "Alongub | Keith Warren(Drixevel) | Arrow768"
-#define STORE_URL "https://github.com/alongubkin/store"
-#define STORE_VERSION "1.2.4"
-
 typeset Store_MenuItemClickCallback
 {
 	function void(int client, const char[] value);

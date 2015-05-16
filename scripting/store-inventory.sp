@@ -15,7 +15,8 @@ new bool:g_showItemsMenuDescriptions = true;
 new Handle:g_itemTypes;
 new Handle:g_itemTypeNameIndex;
 
-new Handle:categories_menu[MAXPLAYERS+1];
+new Handle:categories_menu[MAXPLAYERS + 1];
+new iLeft[MAXPLAYERS + 1] =  { 0, ... };
 
 public Plugin:myinfo =
 {
@@ -128,7 +129,7 @@ public Action:Command_PrintItemTypes(client, args)
 
 OpenInventory(client)
 {
-	if (client <= 0 || client > MaxClients || !IsClientInGame(client) || categories_menu[client] != INVALID_HANDLE)
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client)) //|| categories_menu[client] != INVALID_HANDLE)
 	{
 		return;
 	}
@@ -139,7 +140,7 @@ public GetCategoriesCallback(ids[], count, any:data)
 {	
 	new client = GetClientOfUserId(data);
 	
-	if (client == 0)
+	if (!client)
 	{
 		return;
 	}
@@ -152,7 +153,6 @@ public GetCategoriesCallback(ids[], count, any:data)
 	
 	categories_menu[client] = CreateMenu(InventoryMenuSelectHandle);
 	SetMenuTitle(categories_menu[client], "%T\n \n", "Inventory", client);
-	SetMenuExitBackButton(categories_menu[client], true);
 	
 	new bool:bNoCategories = true;
 	for (new category = 0; category < count; category++)
@@ -161,15 +161,17 @@ public GetCategoriesCallback(ids[], count, any:data)
 		Store_GetCategoryPluginRequired(ids[category], requiredPlugin, sizeof(requiredPlugin));
 		
 		new typeIndex;
-		if (!StrEqual(requiredPlugin, "") && !GetTrieValue(g_itemTypeNameIndex, requiredPlugin, typeIndex))
+		if (strlen(requiredPlugin) == 0 || !GetTrieValue(g_itemTypeNameIndex, requiredPlugin, typeIndex))
 		{
+			iLeft[client] = count - category - 1;
+			CheckLeft(client);
 			continue;
 		}
 
 		new Handle:hPack = CreateDataPack();
 		WritePackCell(hPack, GetClientUserId(client));
 		WritePackCell(hPack, ids[category]);
-		WritePackCell(hPack, count - category - 1);
+		iLeft[client] = count - category - 1;
 		
 		new Handle:filter = CreateTrie();
 		SetTrieValue(filter, "category_id", ids[category]);
@@ -191,7 +193,6 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	
 	new client = GetClientOfUserId(ReadPackCell(hPack));
 	new categoryId = ReadPackCell(hPack);
-	new left = ReadPackCell(hPack);
 	
 	CloseHandle(hPack);
 		
@@ -199,41 +200,39 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	{
 		return;
 	}
-
-	if (g_hideEmptyCategories && count <= 0)
+	
+	if (!g_hideEmptyCategories || count > 0)
 	{
-		if (left == 0)
+		new String:sValue[8];
+		IntToString(categoryId, sValue, sizeof(sValue));
+	
+		new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		Store_GetCategoryDisplayName(categoryId, sDisplayName, sizeof(sDisplayName));
+		
+		new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		Store_GetCategoryDescription(categoryId, sDescription, sizeof(sDescription));
+		
+		new String:sDisplay[sizeof(sDisplayName) + 1 + sizeof(sDescription)];
+		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
+		
+		if (g_showMenuDescriptions)
 		{
-			DisplayMenu(categories_menu[client], client, MENU_TIME_FOREVER);
-			categories_menu[client] = INVALID_HANDLE;
+			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
 		}
 		
-		return;
+		AddMenuItem(categories_menu[client], sValue, sDisplay);
 	}
-	
-	new String:sValue[8];
-	IntToString(categoryId, sValue, sizeof(sValue));
 
-	new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
-	Store_GetCategoryDisplayName(categoryId, sDisplayName, sizeof(sDisplayName));
-	
-	new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
-	Store_GetCategoryDescription(categoryId, sDescription, sizeof(sDescription));
-	
-	new String:sDisplay[sizeof(sDisplayName) + 1 + sizeof(sDescription)];
-	Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
-	
-	if (g_showMenuDescriptions)
-	{
-		Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
-	}
-	
-	AddMenuItem(categories_menu[client], sValue, sDisplay);
+	CheckLeft(client);
+}
 
-	if (left == 0)
+CheckLeft(client)
+{
+	if (iLeft[client] <= 0)
 	{
-		DisplayMenu(categories_menu[client], client, MENU_TIME_FOREVER);
-		categories_menu[client] = INVALID_HANDLE;
+		SetMenuExitBackButton(categories_menu[client], true);
+		DisplayMenu(categories_menu[client], client, 0);
+		//categories_menu[client] = INVALID_HANDLE;
 	}
 }
 
@@ -254,10 +253,7 @@ public InventoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 					Store_OpenMainMenu(client);
 				}
 			}
-		case MenuAction_End:
-		{
-			CloseHandle(menu);
-		}
+		//case MenuAction_End: CloseHandle(menu);
 	}
 }
 

@@ -15,4 +15,6 @@
 
 #define STORE_AUTHORS "Alongub, Keith Warren(Drixevel), Arrow768"
 #define STORE_URL "https://github.com/alongubkin/store"
-#define STORE_VERSION "1.2.4a"
+#define STORE_VERSION "1.2.4b"
+
+#define STORE_PREFIX "\x04[Store] \x01"

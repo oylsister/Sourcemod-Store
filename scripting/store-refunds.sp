@@ -120,7 +120,7 @@ public GetCategoriesCallback(ids[], count, any:data)
 		new String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
 		Store_GetCategoryPluginRequired(ids[category], requiredPlugin, sizeof(requiredPlugin));
 		
-		if (!StrEqual(requiredPlugin, "") && !Store_IsItemTypeRegistered(requiredPlugin))
+		if (strlen(requiredPlugin) == 0 || !Store_IsItemTypeRegistered(requiredPlugin))
 		{
 			continue;
 		}
@@ -336,7 +336,7 @@ public OnRemoveUserItemComplete(accountId, itemId, any:data)
 {
 	new client = GetClientOfUserId(data);
 
-	if (client == 0)
+	if (!client)
 	{
 		return;
 	}

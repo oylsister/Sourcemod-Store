@@ -21,7 +21,8 @@ new String:g_currencyName[64];
 new Handle:g_buyItemForward;
 new Handle:g_buyItemPostForward;
 
-new Handle:categories_menu[MAXPLAYERS+1];
+new Handle:categories_menu[MAXPLAYERS + 1];
+new iLeft[MAXPLAYERS + 1] =  { 0, ... };
 
 public Plugin:myinfo =
 {
@@ -161,7 +162,7 @@ public GetCategoriesCallback(ids[], count, any:data)
 {
 	new client = GetClientOfUserId(data);
 	
-	if (client == 0)
+	if (!client)
 	{
 		return;
 	}
@@ -180,16 +181,18 @@ public GetCategoriesCallback(ids[], count, any:data)
 	{
 		new String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
 		Store_GetCategoryPluginRequired(ids[category], requiredPlugin, sizeof(requiredPlugin));
-
-		if (!StrEqual(requiredPlugin, "") && !Store_IsItemTypeRegistered(requiredPlugin))
+		
+		if (strlen(requiredPlugin) == 0 || !Store_IsItemTypeRegistered(requiredPlugin))
 		{
+			iLeft[client] = count - category - 1;
+			CheckLeft(client);
 			continue;
 		}
-
+		
 		new Handle:hPack = CreateDataPack();
 		WritePackCell(hPack, GetClientUserId(client));
 		WritePackCell(hPack, ids[category]);
-		WritePackCell(hPack, count - category - 1);
+		iLeft[client] = count - category - 1;
 
 		new Handle:filter = CreateTrie();
 		SetTrieValue(filter, "is_buyable", 1);
@@ -212,7 +215,6 @@ public GetItemsForCategoryCallback(ids[], count, any:hPack)
 
 	new client = GetClientOfUserId(ReadPackCell(hPack));
 	new categoryId = ReadPackCell(hPack);
-	new left = ReadPackCell(hPack);
 
 	CloseHandle(hPack);
 	
@@ -242,8 +244,13 @@ public GetItemsForCategoryCallback(ids[], count, any:hPack)
 
 		AddMenuItem(categories_menu[client], sItem, sDisplay);
 	}
+	
+	CheckLeft(client);
+}
 
-	if (left == 0)
+CheckLeft(client)
+{
+	if (iLeft[client] <= 0)
 	{
 		SetMenuExitBackButton(categories_menu[client], true);
 		DisplayMenu(categories_menu[client], client, 0);

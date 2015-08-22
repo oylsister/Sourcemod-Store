@@ -3,6 +3,23 @@
 #endif
 #define _store_backend_included
 
+//Globals
+enum Store_AcquireMethod
+{
+	Store_Shop,
+	Store_Trade,
+	Store_Gift,
+	Store_Admin,
+	Store_Web,
+	Store_Unknown
+}
+
+//Defines
+#define MAX_CATEGORIES	64
+#define MAX_ITEMS 		2048
+#define MAX_LOADOUTS	64
+#define MAX_QUERY_SIZES	2048
+
 #define STORE_MAX_NAME_LENGTH			32
 #define STORE_MAX_DISPLAY_NAME_LENGTH	64
 #define STORE_MAX_DESCRIPTION_LENGTH	128
@@ -13,10 +30,12 @@
 #define STORE_MAX_LOADOUTGAME_LENGTH	32
 #define STORE_MAX_LOADOUTCLASS_LENGTH	32
 
-#define STORE_MAX_ATTRIBUTES_LENGTH		10*1024
+#define STORE_MAX_ATTRIBUTES_LENGTH		10 * 1024
 
+//Prototypes
 typedef Store_GetItemsCallback = function void(int items[], int count, any data);
 typedef Store_GetUserItemsCallback = function void(int useritems[], bool equipped[], int useritemCount[], int count, int loadoutId, any data);
+typedef Store_GetUserLoadoutsCallback = function void(int accountId, int ids[], int count, any data);
 
 typeset Store_ItemGetAttributesCallback 
 {
@@ -33,22 +52,43 @@ typedef Store_RemoveCreditsCallback = function void(int accountId, int credits, 
 typedef Store_BuyItemCallback = function void(bool success, any data);
 typedef Store_EquipItemCallback = function void(int accountId, int itemId, int loadoutId, any data);
 typedef Store_UseItemCallback = function void(int accountId, int itemId, any data);
-typedef Store_GetUserItemCountCallback = function void(int count, any data);
+typedef Store_GetUserItemsCountCallback = function void(int count, any data);
 
-forward Store_OnDatabaseInitialized();
+////////////////////
+//Natives
 
-forward Store_OnReloadItems();
-forward Store_OnReloadItemsPost();
+/**
+ * Registers the plugin module for the webpanel to handle.
+ * It's recommended that all modules register & refresh each plugin load. This is required in order for the webpanel to manage modules properly.
+ *
+ * @param sName		    	Name of the plugin, this is just for reference.
+ * @param sDescription		Description of the plugin, this is just for reference as well.
+ * @param sVersion_ConVar	Name of the version ConVar the plugin uses.
+ * @param sVersion			Current version number of the plugin.
+ * @noreturn
+ */
+native void Store_RegisterPluginModule(const String:sName[], const String:sDescription[], const String:sVersion_ConVar[], const String:sVersion[]);
 
-enum Store_AcquireMethod
-{
-	Store_Shop,
-	Store_Trade,
-	Store_Gift,
-	Store_Admin,
-	Store_Web,
-	Store_Unknown
-}
+/**
+ * Queries the database and returns data to a callback. (Send SQL Queries to the Store database without creating a new connection in your plugin)
+ *
+ * @param callback		Callback to send results to.
+ * @param query			Query to execute.
+ * @param data			Data to pass through callback.
+ * @param prio			Database priority to give.
+ * @noreturn
+ */
+native void Store_SQLTQuery(SQLTCallback:callback, const String:query[], any:data = 0, DBPriority:prio = DBPrio_Normal, const String:sQuery[] = "Native");
+
+/**
+ * Pushes the base URL set to other plugins for them to use. ( Example: "http://www.domain.com/store/" )
+ *
+ * @param sBaseURL		String to set the URL in.
+ * @param size			Size of the string.
+ *
+ * @noreturn
+ */
+native void Store_GetStoreBaseURL(String:sBaseURL[], size);
 
 /**
  * Registers a player in the database:
@@ -68,7 +108,7 @@ enum Store_AcquireMethod
  *
  * @noreturn
  */
-native Store_Register(accountId, const String:name[] = "", credits = 0);
+native void Store_Register(accountId, const String:name[] = "", credits = 0);
 
 /**
  * Registers a player in the database, provided his client index only. 
@@ -87,7 +127,7 @@ native Store_Register(accountId, const String:name[] = "", credits = 0);
  *
  * @noreturn
  */
-native Store_RegisterClient(client, credits = 0);
+native void Store_RegisterClient(client, credits = 0);
 
 /**
  * This function was added back in 1.2.2 in order to add backwards compatibility for older modules.
@@ -100,7 +140,16 @@ native Store_RegisterClient(client, credits = 0);
  *
  * @return Steam account ID on success, 0 on error.
  */
-native Store_GetClientAccountID(client);
+native int Store_GetClientAccountID(client);
+
+/**
+ * Retrieves a clients UserID from the database.
+ *
+ * @param client			Client index.
+ *
+ * @return Database UserID on success, -1 on failure.
+ */
+native int Store_GetClientUserID(client);
 
 /**
  * Retrieves all item categories from the database. 
@@ -146,7 +195,7 @@ native Store_GetClientAccountID(client);
  *
  * @noreturn
  */
-native Store_GetCategories(Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, const String:sPriority[], any:data = 0);
+native void Store_GetCategories(Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, const String:sPriority[], any:data = 0);
 
 /**
  * Retrieves a category's priority number by its ID.
@@ -158,7 +207,7 @@ native Store_GetCategories(Store_GetItemsCallback:callback = INVALID_FUNCTION, b
  *
  * @return Categories priority number.
  */
-native Store_GetCategoryPriority(id);
+native int Store_GetCategoryPriority(id);
 
 /**
  * Retrieves a category's display name by its ID.
@@ -172,7 +221,7 @@ native Store_GetCategoryPriority(id);
  *
  * @noreturn
  */
-native Store_GetCategoryDisplayName(id, String:displayName[], maxlength);
+native void Store_GetCategoryDisplayName(id, String:displayName[], maxlength);
 
 /**
  * Retrieves a category's description by its ID.
@@ -186,7 +235,7 @@ native Store_GetCategoryDisplayName(id, String:displayName[], maxlength);
  *
  * @noreturn
  */
-native Store_GetCategoryDescription(id, String:description[], maxlength);
+native void Store_GetCategoryDescription(id, String:description[], maxlength);
 
 /**
  * Retrieves the plugin name that is required for a specific category. 
@@ -200,7 +249,19 @@ native Store_GetCategoryDescription(id, String:description[], maxlength);
  *
  * @noreturn
  */
-native Store_GetCategoryPluginRequired(id, String:pluginRequired[], maxlength);
+native void Store_GetCategoryPluginRequired(id, String:pluginRequired[], maxlength);
+
+/**
+ * Retrieves a category's status with server restrictions by its ID.
+ *
+ * IMPORTANT: This method only works if the store-backend module has a cache
+ * of all categories.
+ * 
+ * @param id                Category's ID.
+ *
+ * @return	True if enabled, false otherwise.
+ */
+native bool Store_GetCategoryServerRestriction(id);
 
 /**
  * Retrieves items from the database. 
@@ -260,7 +321,7 @@ native Store_GetCategoryPluginRequired(id, String:pluginRequired[], maxlength);
  *
  * @noreturn
  */
-native Store_GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, const String:sPriority[], any:data = 0);
+native void Store_GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, const String:sPriority[], any:data = 0);
 
 /**
  * Retrieves an item's name by its ID.
@@ -279,7 +340,7 @@ native Store_GetItems(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:cal
  *
  * @noreturn
  */
-native Store_GetItemName(id, String:name[], maxlength);
+native void Store_GetItemName(id, String:name[], maxlength);
 
 /**
  * Retrieves an item's priority number by its ID.
@@ -292,7 +353,7 @@ native Store_GetItemName(id, String:name[], maxlength);
  *
  * @return Item priority number.
  */
-native Store_GetItemPriority(id);
+native int Store_GetItemPriority(id);
 
 /**
  * Retrieves an item's display name by its ID.
@@ -311,7 +372,7 @@ native Store_GetItemPriority(id);
  *
  * @noreturn
  */
-native Store_GetItemDisplayName(id, String:displayName[], maxlength);
+native void Store_GetItemDisplayName(id, String:displayName[], maxlength);
 
 /**
  * Retrieves an item's description by its ID.
@@ -325,7 +386,7 @@ native Store_GetItemDisplayName(id, String:displayName[], maxlength);
  *
  * @noreturn
  */
-native Store_GetItemDescription(id, String:description[], maxlength);
+native void Store_GetItemDescription(id, String:description[], maxlength);
 
 /**
  * Retrieves an item's type by its ID.
@@ -339,7 +400,7 @@ native Store_GetItemDescription(id, String:description[], maxlength);
  *
  * @noreturn
  */
-native Store_GetItemType(id, String:type[], maxlength);
+native void Store_GetItemType(id, String:type[], maxlength);
 
 /**
  * Retrieves an item's loadout slot by its ID.
@@ -353,7 +414,7 @@ native Store_GetItemType(id, String:type[], maxlength);
  *
  * @noreturn
  */
-native Store_GetItemLoadoutSlot(id, String:loadoutSlot[], maxlength);
+native void Store_GetItemLoadoutSlot(id, String:loadoutSlot[], maxlength);
 
 /**
  * Retrieves an item's price by its ID.
@@ -365,7 +426,7 @@ native Store_GetItemLoadoutSlot(id, String:loadoutSlot[], maxlength);
  *
  * @return The item's price.
  */
-native Store_GetItemPrice(id);
+native int Store_GetItemPrice(id);
 
 /**
  * Retrieves an item's category by its ID.
@@ -377,7 +438,7 @@ native Store_GetItemPrice(id);
  *
  * @return The item's category ID.
  */
-native Store_GetItemCategory(id);
+native int Store_GetItemCategory(id);
 
 /**
  * Determines whether or not an item is buyable.
@@ -389,7 +450,7 @@ native Store_GetItemCategory(id);
  *
  * @return True if buyable, false otherwise.
  */
-native bool:Store_IsItemBuyable(id);
+native bool Store_IsItemBuyable(id);
 
 /**
  * Determines whether or not an item is tradeable.
@@ -401,7 +462,7 @@ native bool:Store_IsItemBuyable(id);
  *
  * @return True if tradeable, false otherwise.
  */
-native bool:Store_IsItemTradeable(id);
+native bool Store_IsItemTradeable(id);
 
 /**
  * Determines whether or not an item is refundable.
@@ -413,7 +474,7 @@ native bool:Store_IsItemTradeable(id);
  *
  * @return True if refundable, false otherwise.
  */
-native bool:Store_IsItemRefundable(id);
+native bool Store_IsItemRefundable(id);
 
 /** 
  * Retrieves item attributes asynchronously.
@@ -422,7 +483,7 @@ native bool:Store_IsItemRefundable(id);
  *
  * @noreturn
  */
-native Store_GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callback = INVALID_FUNCTION, any:data = 0);
+native void Store_GetItemAttributes(const String:itemName[], Store_ItemGetAttributesCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /** 
  * Modifies item attributes asynchronously.
@@ -431,7 +492,19 @@ native Store_GetItemAttributes(const String:itemName[], Store_ItemGetAttributesC
  *
  * @noreturn
  */
-native Store_WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItemCallback:callback = INVALID_FUNCTION, any:data = 0);
+native void Store_WriteItemAttributes(const String:itemName[], const String:attrs[], Store_BuyItemCallback:callback = INVALID_FUNCTION, any:data = 0);
+
+/**
+ * Retrieves an item's status with server restrictions by its ID.
+ *
+ * IMPORTANT: This method only works if the store-backend module has a cache
+ * of all categories.
+ * 
+ * @param id                Item's ID.
+ *
+ * @return	True if enabled, false otherwise.
+ */
+native bool Store_GetItemServerRestriction(id);
 
 /**
  * Retrieves loadouts from the database. 
@@ -487,7 +560,7 @@ native Store_WriteItemAttributes(const String:itemName[], const String:attrs[], 
  *
  * @noreturn
  */
-native Store_GetLoadouts(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, any:data = 0);
+native void Store_GetLoadouts(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:callback = INVALID_FUNCTION, bool:loadFromCache = true, any:data = 0);
 
 /**
  * Retrieves a loadout's display name by its ID.
@@ -501,7 +574,7 @@ native Store_GetLoadouts(Handle:filter = INVALID_HANDLE, Store_GetItemsCallback:
  *
  * @noreturn
  */
-native Store_GetLoadoutDisplayName(id, String:displayName[], maxlength);
+native void Store_GetLoadoutDisplayName(id, String:displayName[], maxlength);
 
 /**
  * Retrieves a loadout's game by its ID.
@@ -515,7 +588,7 @@ native Store_GetLoadoutDisplayName(id, String:displayName[], maxlength);
  *
  * @noreturn
  */
-native Store_GetLoadoutGame(id, String:game[], maxlength);
+native void Store_GetLoadoutGame(id, String:game[], maxlength);
 
 /**
  * Retrieves a loadout's class by its ID.
@@ -529,7 +602,7 @@ native Store_GetLoadoutGame(id, String:game[], maxlength);
  *
  * @noreturn
  */
-native Store_GetLoadoutClass(id, String:class[], maxlength);
+native void Store_GetLoadoutClass(id, String:class[], maxlength);
 
 /**
  * Retrieves a loadout's team by its ID.
@@ -541,7 +614,27 @@ native Store_GetLoadoutClass(id, String:class[], maxlength);
  *
  * @return The loadout's team.
  */
-native Store_GetLoadoutTeam(id);
+native int Store_GetLoadoutTeam(id);
+
+/**
+ * Retrieves a clients loadouts.
+ * 
+ * - If the player is already in the database, his name will be updated according
+ *   to the 'name' parameter provided.
+ *
+ * - If the player is not in the database (for example, a new player who just joined
+ *   the server for the first time), he will be added using the account ID and name 
+ *   provided.
+ *
+ * As with all other store-backend methods, this method is completely asynchronous.
+ *
+ * @param accountId			The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
+ * @param callback		   	A callback which will be called when the loadouts are retrieved.
+ * @param data              Extra data value to pass to the callback.
+ *
+ * @noreturn
+ */
+native void Store_GetClientLoadouts(accountId, Store_GetUserLoadoutsCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Retrieves items of a specific player in a specific category. 
@@ -607,7 +700,7 @@ native Store_GetLoadoutTeam(id);
  *
  * @noreturn
  */
-native Store_GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItemsCallback:callback, any:data = 0);
+native void Store_GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItemsCallback:callback, any:data = 0);
 
 /**
  * Retrieves the amount of the same item a user has.
@@ -621,7 +714,7 @@ native Store_GetUserItems(Handle:filter, accountId, loadoutId, Store_GetUserItem
  *
  * @noreturn
  */
-native Store_GetUserItemCount(accountId, const String:itemName[], Store_GetUserItemCountCallback:callback, any:data = 0);
+native void Store_GetUserItemsCount(accountId, const String:itemName[], Store_GetUserItemsCountCallback:callback, any:data = 0);
 
 /**
  * Retrieves the amount of credits that a player currently has.
@@ -634,7 +727,7 @@ native Store_GetUserItemCount(accountId, const String:itemName[], Store_GetUserI
  *
  * @noreturn
  */
-native Store_GetCredits(accountId, Store_GetCreditsCallback:callback, any:data = 0);
+native void Store_GetCredits(accountId, Store_GetCreditsCallback:callback, any:data = 0);
 
 /**
  * Retrieves the amount of credits that a player currently has. (Difference between this and the normal native is this doesn't use function calls, just retrieves the amount)
@@ -643,7 +736,7 @@ native Store_GetCredits(accountId, Store_GetCreditsCallback:callback, any:data =
  *
  * @return Amount of credits.
  */
-native Store_GetCreditsEx(accountId);
+native int Store_GetCreditsEx(accountId);
 
 /**
  * Gives a player a specific amount of credits. 
@@ -660,7 +753,7 @@ native Store_GetCreditsEx(accountId);
  *
  * @noreturn
  */
-native Store_GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
+native void Store_GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Gives multiple players a specific amount of credits. 
@@ -676,7 +769,7 @@ native Store_GiveCredits(accountId, credits, Store_GiveCreditsCallback:callback 
  *
  * @noreturn
  */
-native Store_GiveCreditsToUsers(accountIds[], accountIdsLength, credits);
+native void Store_GiveCreditsToUsers(accountIds[], accountIdsLength, credits);
 
 /**
  * Gives multiple players different amounts of credits. 
@@ -692,7 +785,7 @@ native Store_GiveCreditsToUsers(accountIds[], accountIdsLength, credits);
  *
  * @noreturn
  */
-native Store_GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits[]);
+native void Store_GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits[]);
 
 /**
  * Removes a player a specific amount of credits. 
@@ -710,7 +803,7 @@ native Store_GiveDifferentCreditsToUsers(accountIds[], accountIdsLength, credits
  *
  * @noreturn
  */
-native Store_RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
+native void Store_RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Removes multiple players a specific amount of credits. 
@@ -726,7 +819,23 @@ native Store_RemoveCredits(accountId, credits, Store_RemoveCreditsCallback:callb
  *
  * @noreturn
  */
-native Store_RemoveCreditsFromUsers(accountIds[], accountIdsLength, credits);
+native void Store_RemoveCreditsFromUsers(accountIds[], accountIdsLength, credits);
+
+/**
+ * Removes from multiple players different amounts of credits. 
+ * 
+ * You can also set the credits parameter to a positive value to give credits
+ * to the players.
+ *
+ * As with all other store-backend methods, this method is completely asynchronous.
+ *
+ * @param accountIds	    The account IDs of the players, use GetSteamAccountID to convert a client index to account ID.
+ * @param accountIdsLength  Players count.
+ * @param credits           Amount of credits per player. 
+ *
+ * @noreturn
+ */
+native void Store_RemoveDifferentCreditsFromUsers(accountIds[], accountIdsLength, credits[]);
 
 /**
  * Gives player an item.
@@ -742,7 +851,7 @@ native Store_RemoveCreditsFromUsers(accountIds[], accountIdsLength, credits);
  *
  * @noreturn
  */
-native Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_AccountCallback:callback = INVALID_FUNCTION, any:data = 0);
+native void Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Store_Unknown, Store_AccountCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Buys an item for a player, using his credits.
@@ -760,7 +869,7 @@ native Store_GiveItem(accountId, itemId, Store_AcquireMethod:acquireMethod = Sto
  *
  * @noreturn
  */
-native Store_BuyItem(accountId, itemId, Store_BuyItemCallback:callback, any:data = 0);
+native void Store_BuyItem(accountId, itemId, Store_BuyItemCallback:callback, any:data = 0);
 
 /**
  * Removes one copy of an item from a player's inventory.
@@ -774,7 +883,7 @@ native Store_BuyItem(accountId, itemId, Store_BuyItemCallback:callback, any:data
  *
  * @noreturn
  */
-native Store_RemoveUserItem(accountId, itemId, Store_UseItemCallback:callback, any:data = 0);
+native void Store_RemoveUserItem(accountId, itemId, Store_UseItemCallback:callback, any:data = 0);
 
 /**
  * Changes item equipped state in a specific loadout for a player.
@@ -790,7 +899,7 @@ native Store_RemoveUserItem(accountId, itemId, Store_UseItemCallback:callback, a
  *
  * @noreturn
  */
-native Store_SetItemEquippedState(accountId, itemId, loadoutId, bool:isEquipped, Store_EquipItemCallback:callback, any:data = 0);
+native void Store_SetItemEquippedState(accountId, itemId, loadoutId, bool:isEquipped, Store_EquipItemCallback:callback, any:data = 0);
 
 /**
  * Retrieves equipped items of a specific player in a specific type. 
@@ -841,37 +950,69 @@ native Store_SetItemEquippedState(accountId, itemId, loadoutId, bool:isEquipped,
  *
  * @noreturn
  */
-native Store_GetEquippedItemsByType(accountId, const String:type[], loadoutId, Store_GetItemsCallback:callback = INVALID_FUNCTION, any:data = 0);
+native void Store_GetEquippedItemsByType(accountId, const String:type[], loadoutId, Store_GetItemsCallback:callback = INVALID_FUNCTION, any:data = 0);
 
 /**
  * Query the database for items and categories, so that the store-backend module will have a cache of them.
  *
  * @noreturn
  */
-native Store_ReloadItemCache();
-
-/**
- * Registers the plugin module for the webpanel to handle.
- * It's recommended that all modules register & refresh each plugin load. This is required in order for the webpanel to manage modules properly.
- *
- * @param sName		    	Name of the plugin, this is just for reference.
- * @param sDescription		Description of the plugin, this is just for reference as well.
- * @param sVersion_ConVar	Name of the version ConVar the plugin uses.
- * @param sVersion			Current version number of the plugin.
- * @noreturn
- */
-native Store_RegisterPluginModule(const String:sName[], const String:sDescription[], const String:sVersion_ConVar[], const String:sVersion[]);
+native void Store_ReloadItemCache();
 
 /**
  * Queries the database and returns data to a callback. (Send SQL Queries to the Store database without creating a new connection in your plugin)
  *
- * @param callback		Callback to send results to.
- * @param query			Query to execute.
- * @param data			Data to pass through callback.
- * @param prio			Database priority to give.
+ * @param sOriginal		String to escape.
+ * @param sNew			String buffer to store escaped string in.
+ * @param size			Size of the escaped string. (Should be (2 * size + 1))
  * @noreturn
  */
-native Store_SQLTQuery(SQLTCallback:callback, const String:query[], any:data = 0, DBPriority:prio = DBPrio_Normal);
+native void Store_SQLEscapeString(const String:sOriginal[], String:sNew[], size);
+
+/**
+ * Process a ServerID & CategoryID to see if they're valid in the cache. (for category restrictions)
+ *
+ * @param ServerID		ServerID to check in the cache.
+ * @param CategoryID	CategoryID to check in the cache.
+ * @return	True if passed, false otherwise.
+ */
+native bool Store_ProcessCategory(ServerID, CategoryID);
+
+/**
+ * Process a ServerID & ItemID to see if they're valid in the cache. (for item restrictions)
+ *
+ * @param ServerID		ServerID to check in the cache.
+ * @param ItemID		ItemID to check in the cache.
+ * @return	True if passed, false otherwise.
+ */
+native bool Store_ProcessItem(ServerID, ItemID);
+
+////////////////////
+//Forwards
+
+/**
+ * Called when the database initializes successfully without errors.
+ *
+ * @noaction
+ */
+forward void Store_OnDatabaseInitialized();
+
+/**
+ * Called when the items cache is loaded pre. (No reason to make this an action... unless you want to mess up your store on purpose)
+ *
+ * @noaction
+ */
+forward void Store_OnReloadItems();
+
+/**
+ * Called when the items cache is loaded post.
+ *
+ * @noaction
+ */
+forward void Store_OnReloadItemsPost();
+
+////////////////////
+//Include Info
 
 public SharedPlugin:__pl_store_backend =
 {
@@ -887,14 +1028,20 @@ public SharedPlugin:__pl_store_backend =
 #if defined REQUIRE_PLUGIN
 public __pl_store_backend_SetNTVOptional()
 {
+	MarkNativeAsOptional("Store_ReloadItemCache");
+	MarkNativeAsOptional("Store_RegisterPluginModule");
+	
 	MarkNativeAsOptional("Store_Register");
 	MarkNativeAsOptional("Store_RegisterClient");
 	MarkNativeAsOptional("Store_GetClientAccountID");
+	MarkNativeAsOptional("Store_GetClientUserID");
 
 	MarkNativeAsOptional("Store_GetCategories");
 	MarkNativeAsOptional("Store_GetCategoryPriority");
 	MarkNativeAsOptional("Store_GetCategoryDisplayName");
 	MarkNativeAsOptional("Store_GetCategoryDescription");
+	MarkNativeAsOptional("Store_GetCategoryPluginRequired");
+	MarkNativeAsOptional("Store_GetCategoryServerRestriction");
 	
 	MarkNativeAsOptional("Store_GetItems");
 	MarkNativeAsOptional("Store_GetItemPriority");
@@ -908,27 +1055,32 @@ public __pl_store_backend_SetNTVOptional()
 	MarkNativeAsOptional("Store_IsItemRefundable");	
 	MarkNativeAsOptional("Store_GetItemAttributes");
 	MarkNativeAsOptional("Store_WriteItemAttributes");
+	MarkNativeAsOptional("Store_GetItemServerRestriction");
 
 	MarkNativeAsOptional("Store_GetUserItems");
-	MarkNativeAsOptional("Store_GetUserItemCount");
+	MarkNativeAsOptional("Store_GetUserItemsCount");
 	MarkNativeAsOptional("Store_GetCredits");
 	MarkNativeAsOptional("Store_GetCreditsEx");
 	
 	MarkNativeAsOptional("Store_GiveCredits");
 	MarkNativeAsOptional("Store_GiveCreditsToUsers");
 	MarkNativeAsOptional("Store_GiveDifferentCreditsToUsers");
+	MarkNativeAsOptional("Store_GiveItem");
 	
 	MarkNativeAsOptional("Store_RemoveCredits");
 	MarkNativeAsOptional("Store_RemoveCreditsFromUsers");
+	MarkNativeAsOptional("Store_RemoveDifferentCreditsFromUsers");
 
 	MarkNativeAsOptional("Store_BuyItem");
 	MarkNativeAsOptional("Store_RemoveUserItem");
 	
 	MarkNativeAsOptional("Store_SetItemEquippedState");
 	MarkNativeAsOptional("Store_GetEquippedItemsByType");
-
-	MarkNativeAsOptional("Store_ReloadItemCache");
-	MarkNativeAsOptional("Store_RegisterPluginModule");
+	
 	MarkNativeAsOptional("Store_SQLTQuery");
+	MarkNativeAsOptional("Store_SQLEscapeString");
+	
+	MarkNativeAsOptional("Store_ProcessCategory");
+	MarkNativeAsOptional("Store_ProcessItem");
 }
 #endif

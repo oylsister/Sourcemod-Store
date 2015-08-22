@@ -358,4 +358,15 @@
 	{
 		"en"				"Check your console for reload outputs."
 	}
+	
+	"Store Developer Toggled"
+	{
+		"#format"			"{1:s}"
+		"en"				"Developer mode: [{1}]"
+	}
+	
+	"Cannot access while developer"
+	{
+		"en"				"You cannot access this menu while in developer mode."
+	}
 }

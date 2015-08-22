@@ -3,8 +3,9 @@
 #endif
 #define _store_shop_included
 
-forward Action:Store_OnBuyItem(client, itemId);
-forward Store_OnBuyItem_Post(client, itemId, bool:success);
+//Forwards
+forward Action Store_OnBuyItem(int client, int itemId);
+forward void Store_OnBuyItem_Post(int client, int itemId, bool success);
 
 /**
  * Opens the shop menu for a client.
@@ -13,7 +14,7 @@ forward Store_OnBuyItem_Post(client, itemId, bool:success);
  *
  * @noreturn
  */
-native Store_OpenShop(client);
+native void Store_OpenShop(client);
 
 /**
  * Opens the shop menu for a client in a specific category.
@@ -23,7 +24,7 @@ native Store_OpenShop(client);
  *
  * @noreturn
  */
-native Store_OpenShopCategory(client, categoryId);
+native void Store_OpenShopCategory(client, categoryId);
 
 public SharedPlugin:__pl_store_shop =
 {

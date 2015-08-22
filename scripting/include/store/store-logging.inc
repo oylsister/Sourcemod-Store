@@ -10,7 +10,7 @@
  * @param ...           Variable number of format parameters.
  * @noreturn
  */
-native Store_Log(const String:format[] , any:...);
+native void Store_Log(const String:format[] , any:...);
 
 /**
  * Logs a particularly low-level trace message to the Store log file. Trace logs are low-level
@@ -22,7 +22,7 @@ native Store_Log(const String:format[] , any:...);
  * @param ...           Variable number of format parameters.
  * @noreturn
  */
-native Store_LogTrace(const String:format[] , any:...);
+native void Store_LogTrace(const String:format[] , any:...);
 
 /**
  * Logs a debug message to the Store log file. Debug logs are low-level messages primarily used
@@ -34,7 +34,7 @@ native Store_LogTrace(const String:format[] , any:...);
  * @param ...           Variable number of format parameters.
  * @noreturn
  */
-native Store_LogDebug(const String:format[] , any:...);
+native void Store_LogDebug(const String:format[] , any:...);
 
 /**
  * Logs an info message to the Store log file. Info messages should enable the server operator
@@ -45,7 +45,7 @@ native Store_LogDebug(const String:format[] , any:...);
  * @param ...           Variable number of format parameters.
  * @noreturn
  */
-native Store_LogInfo(const String:format[] , any:...);
+native void Store_LogInfo(const String:format[] , any:...);
 
 /**
  * Logs a warning message to the Store log file. Warnings should notify the server operator of
@@ -56,7 +56,7 @@ native Store_LogInfo(const String:format[] , any:...);
  * @param ...           Variable number of format parameters.
  * @noreturn
  */
-native Store_LogWarning(const String:format[] , any:...);
+native void Store_LogWarning(const String:format[] , any:...);
 
 /**
  * Logs an error message to the Store log file. Error logs are either fatal unrecoverable errors
@@ -67,7 +67,7 @@ native Store_LogWarning(const String:format[] , any:...);
  * @param ...           Variable number of format parameters.
  * @noreturn
  */
-native Store_LogError(const String:format[] , any:...);
+native void Store_LogError(const String:format[] , any:...);
 
 public SharedPlugin:__pl_store_logging = 
 {

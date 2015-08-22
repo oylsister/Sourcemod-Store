@@ -9,6 +9,7 @@
 
 #define MAX_FILTERS 128
 
+//Filter Data
 enum Filter
 {
 	String:FilterMap[128],
@@ -23,17 +24,18 @@ enum Filter
 	FilterTeam
 }
 
-new String:g_currencyName[64];
+int g_filters[MAX_FILTERS][Filter];
+int g_filterCount;
 
 //Config Globals
-new Float:g_timeInSeconds = 180.0;
-new bool:g_enableMessagePerTick = true;
-new g_baseMinimum = 1;
-new g_baseMaximum = 3;
-new g_filters[MAX_FILTERS][Filter];
-new g_filterCount;
+float g_timeInSeconds = 180.0;
+bool g_enableMessagePerTick = true;
+int g_baseMinimum = 1;
+int g_baseMaximum = 3;
 
-public Plugin:myinfo =
+char g_currencyName[64];
+
+public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
 	author = STORE_AUTHORS,
@@ -42,7 +44,7 @@ public Plugin:myinfo =
 	url = STORE_URL
 };
 
-public OnPluginStart()
+public void OnPluginStart()
 {
 	LoadTranslations("store.phrases");
 	
@@ -53,21 +55,21 @@ public OnPluginStart()
 	CreateTimer(g_timeInSeconds, ForgivePoints, _, TIMER_REPEAT);
 }
 
-public OnAllPluginsLoaded()
+public void OnAllPluginsLoaded()
 {
 	Store_GetCurrencyName(g_currencyName, sizeof(g_currencyName));
 }
 
-public Store_OnDatabaseInitialized()
+public void Store_OnDatabaseInitialized()
 {
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
-LoadConfig()
+void LoadConfig()
 {
-	new Handle:kv = CreateKeyValues("root");
+	Handle kv = CreateKeyValues("root");
 
-	new String:path[PLATFORM_MAX_PATH];
+	char path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/distributor.cfg");
 
 	if (!FileToKeyValues(kv, path))
@@ -77,7 +79,7 @@ LoadConfig()
 	}
 
 	g_timeInSeconds = KvGetFloat(kv, "time_per_distribute", 180.0);
-	g_enableMessagePerTick = bool:KvGetNum(kv, "enable_message_per_distribute", 1);
+	g_enableMessagePerTick = view_as<bool>KvGetNum(kv, "enable_message_per_distribute", 1);
 
 	if (KvJumpToKey(kv, "distribution"))
 	{
@@ -103,7 +105,7 @@ LoadConfig()
 					g_filters[g_filterCount][FilterPlayerCount] = KvGetNum(kv, "player_count", 0);
 					g_filters[g_filterCount][FilterTeam] = KvGetNum(kv, "team", -1);
 
-					new String:flags[32];
+					char flags[32];
 					KvGetString(kv, "flags", flags, sizeof(flags));
 
 					if (!StrEqual(flags, ""))
@@ -123,21 +125,24 @@ LoadConfig()
 }
 
 
-public Action:ForgivePoints(Handle:timer)
+public Action ForgivePoints(Handle timer)
 {
-	new String:map[128];
+	char map[128];
 	GetCurrentMap(map, sizeof(map));
 
-	new clientCount = GetClientCount();
+	int clientCount = GetClientCount();
+	
+	int[] accountIds = new int[MaxClients];
+	int[] credits = new int[MaxClients];
 
-	new accountIds[MaxClients];
-	new credits[MaxClients];
+	int count;
 
-	new count = 0;
-
-	for (new i = 1; i <= MaxClients; i++)
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (!IsClientInGame(i) || IsFakeClient(i) || IsClientObserver(i)) continue;
+		if (!IsClientInGame(i) || IsFakeClient(i) || IsClientObserver(i))
+		{
+			continue;
+		}
 		
 		accountIds[count] = GetSteamAccountID(i);
 		credits[count] = Calculate(i, map, clientCount);
@@ -153,12 +158,12 @@ public Action:ForgivePoints(Handle:timer)
 	Store_GiveDifferentCreditsToUsers(accountIds, count, credits);
 }
 
-Calculate(client, const String:map[], clientCount)
+int Calculate(int client, const char[] map, int clientCount)
 {
-	new min = g_baseMinimum;
-	new max = g_baseMaximum;
+	int min = g_baseMinimum;
+	int max = g_baseMaximum;
 
-	for (new filter = 0; filter < g_filterCount; filter++)
+	for (int filter = 0; filter < g_filterCount; filter++)
 	{
 		if ((g_filters[filter][FilterPlayerCount] == 0 || clientCount >= g_filters[filter][FilterPlayerCount]) && (StrEqual(g_filters[filter][FilterMap], "") || StrEqual(g_filters[filter][FilterMap], map)) && (g_filters[filter][FilterFlags] == 0 || HasPermission(client, g_filters[filter][FilterFlags])) && (g_filters[filter][FilterTeam] == -1 || g_filters[filter][FilterTeam] == GetClientTeam(client)))
 		{
@@ -170,17 +175,17 @@ Calculate(client, const String:map[], clientCount)
 	return GetRandomInt(min, max);
 }
 
-bool:HasPermission(client, flags)
+bool HasPermission(int client, int flags)
 {
-	new AdminId:admin = GetUserAdmin(client);
+	AdminId admin = GetUserAdmin(client);
 	
 	if (admin == INVALID_ADMIN_ID)
 	{
 		return false;
 	}
 
-	new count = 0, found = 0;
-	for (new i = 0; i <= 20; i++)
+	int count; int found;
+	for (int i = 0; i <= 20; i++)
     {
 		if (flags & (1<<i))
 		{

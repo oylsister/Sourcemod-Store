@@ -3,6 +3,7 @@
 #endif
 #define _store_core_included
 
+//Prototypes
 typeset Store_MenuItemClickCallback
 {
 	function void(int client, const char[] value);
@@ -15,9 +16,10 @@ typeset Store_ChatCommandCallback
 	function void(int client, const char[] command, const char[] args);
 }
 
-forward Action:Store_OnChatCommand(client, const String:command[], const String:args[]);
-forward Store_OnChatCommand_Post(client, const String:command[], const String:args[]);
-forward Store_OnCoreLoaded();
+//Forwards
+forward Action Store_OnChatCommand(client, const String:command[], const String:args[]);
+forward void Store_OnChatCommand_Post(client, const String:command[], const String:args[]);
+forward void Store_OnCoreLoaded();
 
 /**
  * Opens the main menu for a player.
@@ -26,7 +28,7 @@ forward Store_OnCoreLoaded();
  *
  * @noreturn
  */
-native Store_OpenMainMenu(client);
+native void Store_OpenMainMenu(client);
 
 /**
  * Adds an item to the main menu.
@@ -36,10 +38,11 @@ native Store_OpenMainMenu(client);
  * @param value				Item information string that will be sent to the callback.
  * @param callback			Callback to the item click event.
  * @param order				Preferred position of the item in the menu.
+ * @param bIsDisabled		True if item is disabled, false otherwise.
  *
  * @noreturn
  */
-native Store_AddMainMenuItem(const String:displayName[], const String:description[] = "", const String:value[] = "", Store_MenuItemClickCallback:callback, order = 32);
+native void Store_AddMainMenuItem(const String:displayName[], const String:description[] = "", const String:value[] = "", Store_MenuItemClickCallback:callback, order = 32, bool:bIsDisabled = false);
 
 /**
  * Adds an item to the main menu. (Difference between the versions is this one doesn't use translations)
@@ -49,10 +52,11 @@ native Store_AddMainMenuItem(const String:displayName[], const String:descriptio
  * @param value				Item information string that will be sent to the callback.
  * @param callback			Callback to the item click event.
  * @param order				Preferred position of the item in the menu.
+ * @param bIsDisabled		True if item is disabled, false otherwise.
  *
  * @noreturn
  */
-native Store_AddMainMenuItemEx(const String:displayName[], const String:description[] = "", const String:value[] = "", Store_MenuItemClickCallback:callback, order = 32);
+native void Store_AddMainMenuItemEx(const String:displayName[], const String:description[] = "", const String:value[] = "", Store_MenuItemClickCallback:callback, order = 32, bool:bIsDisabled = false);
 
 /**
  * Retrieve currency name as it is defined in the core config file.
@@ -62,7 +66,7 @@ native Store_AddMainMenuItemEx(const String:displayName[], const String:descript
  *
  * @noreturn
  */
-native Store_GetCurrencyName(String:currencyName[], maxLength);
+native void Store_GetCurrencyName(String:currencyName[], maxLength);
 
 /**
 * Retrieve sql config entry as it is defined in the core config file.
@@ -72,7 +76,7 @@ native Store_GetCurrencyName(String:currencyName[], maxLength);
 *
 * @noreturn
 */
-native Store_GetSQLEntry(String:sqlEntryName[], maxLength);
+native void Store_GetSQLEntry(String:sqlEntryName[], maxLength);
 
 /**
  * Registers commands with the store plugin.
@@ -82,14 +86,23 @@ native Store_GetSQLEntry(String:sqlEntryName[], maxLength);
  *
  * @return Returns false if a duplicate command or number of commands > MAX_CHAT_COMMANDS, otherwise true.
  */
-native bool:Store_RegisterChatCommands(const String:commands[], Store_ChatCommandCallback:callback);
+native bool Store_RegisterChatCommands(const String:commands[], Store_ChatCommandCallback:callback);
 
 /**
  * Retrieve the server's assigned ID, this is used mostly for web panel functionality.
  *
  * @return Returns ServerID if set, 0 for all other returns.
  */
-native Store_GetServerID();
+native int Store_GetServerID();
+
+/**
+ * Retrieves if the client is in developer mode or not for the store system.
+ *
+ * @param client		Client index.
+ *
+ * @return True if developer is enabled, false otherwise.
+ */
+native bool Store_ClientIsDeveloper(client);
 
 public SharedPlugin:__pl_store =
 {
@@ -112,5 +125,6 @@ public __pl_store_SetNTVOptional()
 	MarkNativeAsOptional("Store_GetSQLEntry");
 	MarkNativeAsOptional("Store_RegisterChatCommands");
 	MarkNativeAsOptional("Store_GetServerID");
+	MarkNativeAsOptional("Store_ClientIsDeveloper");
 }
 #endif

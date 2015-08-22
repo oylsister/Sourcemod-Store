@@ -6,8 +6,9 @@ CREATE TABLE IF NOT EXISTS `store_categories` (
   `require_plugin` varchar(32) default NULL,
   `web_description` text default NULL,  
   `web_color` varchar(10) default NULL,
+  `enable_server_restriction` int(11) default 0,
   PRIMARY KEY  (`id`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=10 ;
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 
 CREATE TABLE IF NOT EXISTS `store_items` (
@@ -27,9 +28,10 @@ CREATE TABLE IF NOT EXISTS `store_items` (
   `is_refundable` tinyint(1) NOT NULL DEFAULT '1',
   `expiry_time` int(11) NULL,
   `flags` varchar(11) default NULL,
+  `enable_server_restriction` int(11) default 0,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=150 ;
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 
 CREATE TABLE IF NOT EXISTS `store_loadouts` (
@@ -39,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `store_loadouts` (
   `class` varchar(32) default NULL,
   `team` int(11) default NULL,
   PRIMARY KEY  (`id`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=4 ;
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 INSERT INTO `store_loadouts` (`display_name`, `game`, `class`, `team`) VALUES
 ('A', NULL, NULL, NULL),
@@ -53,7 +55,7 @@ CREATE TABLE IF NOT EXISTS `store_users` (
   `credits` int(11) NOT NULL,
   PRIMARY KEY  (`id`),
   UNIQUE KEY `auth` (`auth`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=730 ;
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS `store_users_items` (
   `id` int(11) NOT NULL auto_increment,
@@ -62,14 +64,14 @@ CREATE TABLE IF NOT EXISTS `store_users_items` (
   `acquire_date` DATETIME NULL,
   `acquire_method` ENUM('shop', 'trade', 'gift', 'admin', 'web') NULL,
   PRIMARY KEY  (`id`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=434 ;
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS `store_users_items_loadouts` (
   `id` int(11) NOT NULL auto_increment,
   `useritem_id` int(11) NOT NULL,
   `loadout_id` int(11) NOT NULL,
   PRIMARY KEY  (`id`)
-) ENGINE=MyISAM  DEFAULT CHARSET=utf8 AUTO_INCREMENT=1036 ;
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
 
 CREATE TABLE IF NOT EXISTS `store_versions` (
   `id` INT(11) NOT NULL AUTO_INCREMENT,
@@ -82,3 +84,17 @@ CREATE TABLE IF NOT EXISTS `store_versions` (
   PRIMARY KEY (`id`),
   UNIQUE INDEX `UNIQUE PLUGIN ON SERVER` (`mod_ver_convar`, `server_id`)
 ) COLLATE='utf8_general_ci' ENGINE=InnoDB AUTO_INCREMENT=7;
+
+CREATE TABLE IF NOT EXISTS `store_servers_items` (
+  `id` int(11) NOT NULL auto_increment,
+  `item_id` int(11),
+  `server_id` int(11),
+  PRIMARY KEY  (`id`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `store_servers_categories` (
+  `id` int(11) NOT NULL auto_increment,
+  `category_id` int(11),
+  `server_id` int(11),
+  PRIMARY KEY  (`id`)
+) ENGINE=MyISAM  DEFAULT CHARSET=utf8;

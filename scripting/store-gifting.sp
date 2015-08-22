@@ -1,11 +1,12 @@
 #pragma semicolon 1
 
 #include <sourcemod>
+#include <store>
+
 #include <sdkhooks>
 #include <sdktools>
 #include <adminmenu>
 #include <smartdm>
-#include <store>
 
 #define PLUGIN_NAME "[Store] Gifting Module"
 #define PLUGIN_DESCRIPTION "Gifting module for the Sourcemod Store."
@@ -25,12 +26,6 @@ enum GiftAction
 	GiftAction_Drop
 }
 
-enum GiftType
-{
-	GiftType_Credits,
-	GiftType_Item
-}
-
 enum GiftRequest
 {
 	bool:GiftRequestActive,
@@ -39,20 +34,26 @@ enum GiftRequest
 	GiftRequestValue
 }
 
-new String:g_currencyName[64];
+int g_giftRequests[MAXPLAYERS+1][GiftRequest];
+
+enum GiftType
+{
+	GiftType_Credits,
+	GiftType_Item
+}
 
 //Config Globals
-new bool:g_showItemsMenuDescriptions = true;
-new g_creditChoices[MAX_CREDIT_CHOICES];
-new g_giftRequests[MAXPLAYERS+1][GiftRequest];
-new bool:g_drop_enabled = false;
-new String:g_itemModel[PLATFORM_MAX_PATH];
-new String:g_creditsModel[PLATFORM_MAX_PATH];
+bool g_showItemsMenuDescriptions = true;
+int g_creditChoices[MAX_CREDIT_CHOICES];
+bool g_drop_enabled = false;
+char g_itemModel[PLATFORM_MAX_PATH];
+char g_creditsModel[PLATFORM_MAX_PATH];
 
-new g_spawnedPresents[2048][Present];
-new String:g_game[32];
+int g_spawnedPresents[2048][Present];
+char g_game[32];
+char g_currencyName[64];
 
-public Plugin:myinfo =
+public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
 	author = STORE_AUTHORS,
@@ -61,7 +62,7 @@ public Plugin:myinfo =
 	url = STORE_URL
 };
 
-public OnPluginStart()
+public void OnPluginStart()
 {
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
@@ -75,26 +76,26 @@ public OnPluginStart()
 	LoadConfig();
 }
 
-public Store_OnCoreLoaded()
+public void Store_OnCoreLoaded()
 {
 	Store_AddMainMenuItem("Gift", "Gift Description", _, OnMainMenuGiftClick, 5);
 }
 
-public OnConfigsExecuted()
+public void OnConfigsExecuted()
 {    
 	Store_GetCurrencyName(g_currencyName, sizeof(g_currencyName));
 }
 
-public Store_OnDatabaseInitialized()
+public void Store_OnDatabaseInitialized()
 {
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
-LoadConfig() 
+void LoadConfig() 
 {
-	new Handle:kv = CreateKeyValues("root");
+	Handle kv = CreateKeyValues("root");
 	
-	new String:path[PLATFORM_MAX_PATH];
+	char path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/gifting.cfg");
 	
 	if (!FileToKeyValues(kv, path)) 
@@ -103,20 +104,20 @@ LoadConfig()
 		SetFailState("Can't read config file %s", path);
 	}
 	
-	g_showItemsMenuDescriptions = bool:KvGetNum(kv, "show_items_menu_descriptions", 1);
+	g_showItemsMenuDescriptions = view_as<bool>KvGetNum(kv, "show_items_menu_descriptions", 1);
 	
-	new String:creditChoicesString[255];
+	char creditChoicesString[255];
 	KvGetString(kv, "credits_choices", creditChoicesString, sizeof(creditChoicesString));
 	
-	new String:creditChoices[MAX_CREDIT_CHOICES][10];
-	new choices = ExplodeString(creditChoicesString, " ", creditChoices, sizeof(creditChoices), sizeof(creditChoices[]));
+	char creditChoices[MAX_CREDIT_CHOICES][10];
+	int choices = ExplodeString(creditChoicesString, " ", creditChoices, sizeof(creditChoices), sizeof(creditChoices[]));
 	
-	for (new choice = 0; choice < choices; choice++)
+	for (int choice = 0; choice < choices; choice++)
 	{
 		g_creditChoices[choice] = StringToInt(creditChoices[choice]);
 	}
 	
-	g_drop_enabled = bool:KvGetNum(kv, "drop_enabled", 0);
+	g_drop_enabled = view_as<bool>KvGetNum(kv, "drop_enabled", 0);
 
 	if (g_drop_enabled)
 	{
@@ -146,7 +147,7 @@ LoadConfig()
 	
 	if (KvJumpToKey(kv, "Commands"))
 	{
-		new String:sBuffer[256];
+		char sBuffer[256];
 		KvGetString(kv, "gifting_commands", sBuffer, sizeof(sBuffer), "!gift /gift");
 		Store_RegisterChatCommands(sBuffer, ChatCommand_Gift);
 		
@@ -173,7 +174,7 @@ LoadConfig()
 	Store_AddMainMenuItem("Gift", "Gift Description", _, OnMainMenuGiftClick, 5);
 }
 
-public OnMapStart()
+public void OnMapStart()
 {
 	if (!g_drop_enabled)
 	{
@@ -191,12 +192,12 @@ public OnMapStart()
 	}
 }
 
-public DropGetCreditsCallback(credits, any:hPack)
+public void DropGetCreditsCallback(int credits, any hPack)
 {
 	ResetPack(hPack);
 	
-	new client = GetClientOfUserId(ReadPackCell(hPack));
-	new needed = ReadPackCell(hPack);
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	int needed = ReadPackCell(hPack);
 	
 	CloseHandle(hPack);
 
@@ -210,16 +211,17 @@ public DropGetCreditsCallback(credits, any:hPack)
 	}
 }
 
-public DropGiveCreditsCallback(accountId, credits, bool:bIsNegative, any:data)
+public void DropGiveCreditsCallback(int accountId, int credits, bool bIsNegative, any data)
 {
-	new client = GetClientOfUserId(data);
+	int client = GetClientOfUserId(data);
 
-	new String:sValue[32];
+	char sValue[32];
 	Format(sValue, sizeof(sValue), "credits,%d", credits);
 
 	CPrintToChat(client, "%t%t", "Store Tag Colored", "Gift Credits Dropped", credits, g_currencyName);
 
-	new present = SpawnPresent(client, g_creditsModel);
+	int present = SpawnPresent(client, g_creditsModel);
+	
 	if (present != -1)
 	{
 		strcopy(g_spawnedPresents[present][Present_Data], 64, sValue);
@@ -227,22 +229,22 @@ public DropGiveCreditsCallback(accountId, credits, bool:bIsNegative, any:data)
 	}
 }
 
-public OnMainMenuGiftClick(client, const String:value[])
+public void OnMainMenuGiftClick(int client, const char[] value)
 {
 	OpenGiftingMenu(client);
 }
 
-public Action:Event_PlayerDisconnect(Handle:event, const String:name[], bool:dontBroadcast) 
+public Action Event_PlayerDisconnect(Handle event, const char[] name, bool dontBroadcast) 
 { 
 	g_giftRequests[GetClientOfUserId(GetEventInt(event, "userid"))][GiftRequestActive] = false;
 }
 
-public ChatCommand_Gift(client)
+public void ChatCommand_Gift(int client)
 {
 	OpenGiftingMenu(client);
 }
 
-public ChatCommand_Accept(client)
+public void ChatCommand_Accept(int client)
 {
 	if (!g_giftRequests[client][GiftRequestActive])
 	{
@@ -261,7 +263,7 @@ public ChatCommand_Accept(client)
 	g_giftRequests[client][GiftRequestActive] = false;
 }
 
-public ChatCommand_Cancel(client)
+public void ChatCommand_Cancel(int client)
 {
 	if (g_giftRequests[client][GiftRequestActive])
 	{
@@ -270,7 +272,7 @@ public ChatCommand_Cancel(client)
 	}
 }
 
-public ChatCommand_Drop(client, const String:command[], const String:args[])
+public void ChatCommand_Drop(int client, const char[] command, const char[] args)
 {
 	if (strlen(args) <= 0)
 	{
@@ -286,7 +288,7 @@ public ChatCommand_Drop(client, const String:command[], const String:args[])
 		return;
 	}
 
-	new credits = StringToInt(args);
+	int credits = StringToInt(args);
 
 	if (credits < 1)
 	{
@@ -302,18 +304,21 @@ public ChatCommand_Drop(client, const String:command[], const String:args[])
 		return;
 	}
 	
-	new Handle:hPack = CreateDataPack();
+	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, GetClientUserId(client));
 	WritePackCell(hPack, credits);
 
 	Store_GetCredits(GetSteamAccountID(client), DropGetCreditsCallback, hPack);
 }
 
-OpenGiftingMenu(client)
+void OpenGiftingMenu(int client)
 {
-	for (new i = 1; i <= MaxClients; i++)
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if (!IsClientInGame(i) || IsFakeClient(i)) continue;
+		if (!IsClientInGame(i) || IsFakeClient(i))
+		{
+			continue;
+		}
 		
 		if (g_giftRequests[i][GiftRequestActive] && g_giftRequests[i][GiftRequestSender] == client)
 		{
@@ -322,10 +327,10 @@ OpenGiftingMenu(client)
 		}
 	}
 
-	new Handle:menu = CreateMenu(GiftTypeMenuSelectHandle);
+	Handle menu = CreateMenu(GiftTypeMenuSelectHandle);
 	SetMenuTitle(menu, "%T", "Gift Type Menu Title", client);
 
-	new String:item[32];
+	char item[32];
 	Format(item, sizeof(item), "%T", "Item", client);
 
 	AddMenuItem(menu, "credits", g_currencyName);
@@ -335,13 +340,13 @@ OpenGiftingMenu(client)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public GiftTypeMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int GiftTypeMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sInfo[12];
+			char sInfo[12];
 			GetMenuItem(menu, slot, sInfo, sizeof(sInfo));
 				
 			if (StrEqual(sInfo, "credits"))
@@ -372,23 +377,23 @@ public GiftTypeMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 	}
 }
 
-OpenChooseActionMenu(client, GiftType:giftType)
+void OpenChooseActionMenu(int client, GiftType giftType)
 {
-	new Handle:menu = CreateMenu(ChooseActionMenuSelectHandle);
+	Handle menu = CreateMenu(ChooseActionMenuSelectHandle);
 	SetMenuTitle(menu, "%T", "Gift Delivery Method", client);
 
-	new String:s_giftType[32];
+	char s_giftType[32];
 	switch (giftType)
 	{
 		case GiftType_Credits: strcopy(s_giftType, sizeof(s_giftType), "credits");
 		case GiftType_Item: strcopy(s_giftType, sizeof(s_giftType), "item");
 	}
 
-	new String:send[32], String:drop[32];
+	char send[32]; char drop[32];
 	Format(send, sizeof(send), "%s,send", s_giftType);
 	Format(drop, sizeof(drop), "%s,drop", s_giftType);
 
-	new String:methodSend[32], String:methodDrop[32];
+	char methodSend[32]; char methodDrop[32];
 	Format(methodSend, sizeof(methodSend), "%T", "Gift Method Send", client);
 	Format(methodDrop, sizeof(methodDrop), "%T", "Gift Method Drop", client);
 
@@ -399,19 +404,19 @@ OpenChooseActionMenu(client, GiftType:giftType)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public ChooseActionMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int ChooseActionMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:values[32];
+			char values[32];
 			GetMenuItem(menu, slot, values, sizeof(values));
 			
-			new String:brokenValues[2][32];
+			char brokenValues[2][32];
 			ExplodeString(values, ",", brokenValues, sizeof(brokenValues), sizeof(brokenValues[]));
 
-			new GiftType:giftType;
+			GiftType giftType;
 
 			if (StrEqual(brokenValues[0], "credits"))
 			{
@@ -430,8 +435,8 @@ public ChooseActionMenuSelectHandle(Handle:menu, MenuAction:action, client, slot
 			{
 				switch (giftType)
 				{
-				case GiftType_Item: OpenSelectItemMenu(client, GiftAction_Drop, -1);
-				case GiftType_Credits: OpenSelectCreditsMenu(client, GiftAction_Drop, -1);
+					case GiftType_Item: OpenSelectItemMenu(client, GiftAction_Drop, -1);
+					case GiftType_Credits: OpenSelectCreditsMenu(client, GiftAction_Drop, -1);
 				}
 			}
 		}
@@ -446,9 +451,9 @@ public ChooseActionMenuSelectHandle(Handle:menu, MenuAction:action, client, slot
 	}
 }
 
-OpenChoosePlayerMenu(client, GiftType:giftType)
+void OpenChoosePlayerMenu(int client, GiftType giftType)
 {
-	new Handle:menu;
+	Handle menu;
 	
 	switch (giftType)
 	{
@@ -465,13 +470,13 @@ OpenChoosePlayerMenu(client, GiftType:giftType)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);	
 }
 
-public ChoosePlayerCreditsMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int ChoosePlayerCreditsMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sMenuItem[64];
+			char sMenuItem[64];
 			GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 			OpenSelectCreditsMenu(client, GiftAction_Send, GetClientOfUserId(StringToInt(sMenuItem)));
 		}
@@ -486,13 +491,13 @@ public ChoosePlayerCreditsMenuSelectHandle(Handle:menu, MenuAction:action, clien
 	}
 }
 
-public ChoosePlayerItemMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int ChoosePlayerItemMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sMenuItem[64];
+			char sMenuItem[64];
 			GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 			OpenSelectItemMenu(client, GiftAction_Send, GetClientOfUserId(StringToInt(sMenuItem)));
 		}
@@ -507,25 +512,25 @@ public ChoosePlayerItemMenuSelectHandle(Handle:menu, MenuAction:action, client, 
 	}
 }
 
-OpenSelectCreditsMenu(client, GiftAction:giftAction, giftTo = -1)
+void OpenSelectCreditsMenu(int client, GiftAction giftAction, int giftTo = -1)
 {
 	if (giftAction == GiftAction_Send && giftTo == -1)
 	{
 		return;
 	}
 
-	new Handle:menu = CreateMenu(CreditsMenuSelectItem);
+	Handle menu = CreateMenu(CreditsMenuSelectItem);
 
 	SetMenuTitle(menu, "Select %s:", g_currencyName);
 
-	for (new choice = 0; choice < sizeof(g_creditChoices); choice++)
+	for (int choice = 0; choice < sizeof(g_creditChoices); choice++)
 	{
 		if (g_creditChoices[choice] == 0) continue;
 
-		new String:text[48];
+		char text[48];
 		IntToString(g_creditChoices[choice], text, sizeof(text));
 
-		new String:value[32];
+		char value[32];
 		Format(value, sizeof(value), "%d,%d,%d", _:giftAction, giftTo, g_creditChoices[choice]);
 
 		AddMenuItem(menu, value, text);
@@ -535,23 +540,23 @@ OpenSelectCreditsMenu(client, GiftAction:giftAction, giftTo = -1)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public CreditsMenuSelectItem(Handle:menu, MenuAction:action, client, slot)
+public int CreditsMenuSelectItem(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sMenuItem[64];
+			char sMenuItem[64];
 			GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 			
-			new String:values[3][16];
+			char values[3][16];
 			ExplodeString(sMenuItem, ",", values, sizeof(values), sizeof(values[]));
 				
-			new giftAction = _:StringToInt(values[0]);
-			new giftTo = StringToInt(values[1]);
-			new credits = StringToInt(values[2]);
+			int giftAction = _:StringToInt(values[0]);
+			int giftTo = StringToInt(values[1]);
+			int credits = StringToInt(values[2]);
 			
-			new Handle:hPack = CreateDataPack();
+			Handle hPack = CreateDataPack();
 			WritePackCell(hPack, GetClientUserId(client));
 			WritePackCell(hPack, giftAction);
 			WritePackCell(hPack, giftTo);
@@ -570,14 +575,14 @@ public CreditsMenuSelectItem(Handle:menu, MenuAction:action, client, slot)
 	}
 }
 
-public GetCreditsCallback(credits, any:hPack)
+public void GetCreditsCallback(int credits, any hPack)
 {
 	ResetPack(hPack);
 
-	new client = GetClientOfUserId(ReadPackCell(hPack));
-	new GiftAction:giftAction = GiftAction:ReadPackCell(hPack);
-	new giftTo = ReadPackCell(hPack);
-	new giftCredits = ReadPackCell(hPack);
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	GiftAction giftAction = view_as<GiftAction>ReadPackCell(hPack);
+	int giftTo = ReadPackCell(hPack);
+	int giftCredits = ReadPackCell(hPack);
 
 	CloseHandle(hPack);
 
@@ -591,16 +596,16 @@ public GetCreditsCallback(credits, any:hPack)
 	}
 }
 
-OpenGiveCreditsConfirmMenu(client, GiftAction:giftAction, giftTo, credits)
+void OpenGiveCreditsConfirmMenu(int client, GiftAction giftAction, int giftTo, int credits)
 {
-	new Handle:menu = CreateMenu(CreditsConfirmMenuSelectItem);
-	new String:sItem[32];
+	Handle menu = CreateMenu(CreditsConfirmMenuSelectItem);
+	char sItem[32];
 	
 	switch (giftAction)
 	{
 	case GiftAction_Send:
 		{
-			new String:sName[MAX_NAME_LENGTH];
+			char sName[MAX_NAME_LENGTH];
 			GetClientName(giftTo, sName, sizeof(sName));
 			
 			SetMenuTitle(menu, "%T", "Gift Credit Confirmation", client, sName, credits, g_currencyName);
@@ -619,30 +624,30 @@ OpenGiveCreditsConfirmMenu(client, GiftAction:giftAction, giftTo, credits)
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);  
 }
 
-public CreditsConfirmMenuSelectItem(Handle:menu, MenuAction:action, client, slot)
+public int CreditsConfirmMenuSelectItem(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sMenuItem[64];
+			char sMenuItem[64];
 			GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 				
 			if (!StrEqual(sMenuItem, ""))
 			{
-				new String:values[3][16];
+				char values[3][16];
 				ExplodeString(sMenuItem, ",", values, sizeof(values), sizeof(values[]));
 
-				new GiftAction:giftAction = GiftAction:StringToInt(values[0]);
-				new giftTo = StringToInt(values[1]);
-				new credits = StringToInt(values[2]);
+				GiftAction giftAction = view_as<GiftAction>StringToInt(values[0]);
+				int giftTo = StringToInt(values[1]);
+				int credits = StringToInt(values[2]);
 				
 				switch (giftAction)
 				{
 					case GiftAction_Send: AskForPermission(client, giftTo, GiftType_Credits, credits);
 					case GiftAction_Drop:
 						{
-							new Handle:hPack = CreateDataPack();
+							Handle hPack = CreateDataPack();
 							WritePackCell(hPack, GetClientUserId(client));
 							WritePackCell(hPack, credits);
 							
@@ -653,10 +658,10 @@ public CreditsConfirmMenuSelectItem(Handle:menu, MenuAction:action, client, slot
 		}
 	case MenuAction_DisplayItem:
 		{
-			new String:sDisplay[64];
+			char sDisplay[64];
 			GetMenuItem(menu, slot, "", 0, _, sDisplay, sizeof(sDisplay));
 
-			new String:buffer[255];
+			char buffer[255];
 			Format(buffer, sizeof(buffer), "%T", sDisplay, client);
 
 			return RedrawMenuItem(buffer);
@@ -674,26 +679,26 @@ public CreditsConfirmMenuSelectItem(Handle:menu, MenuAction:action, client, slot
 	return false;
 }
 
-OpenSelectItemMenu(client, GiftAction:giftAction, giftTo = -1)
+void OpenSelectItemMenu(int client, GiftAction giftAction, int giftTo = -1)
 {
-	new Handle:hPack = CreateDataPack();
+	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, GetClientUserId(client));
 	WritePackCell(hPack, _:giftAction);
 	WritePackCell(hPack, giftTo);
 
-	new Handle:filter = CreateTrie();
+	Handle filter = CreateTrie();
 	SetTrieValue(filter, "is_tradeable", 1);
 
-	Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientLoadout(client), GetUserItemsCallback, hPack);
+	Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientCurrentLoadout(client), GetUserItemsCallback, hPack);
 }
 
-public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutId, any:hPack)
+public void GetUserItemsCallback(int[] ids, bool[] equipped, int[] itemCount, int count, int loadoutId, any hPack)
 {		
 	ResetPack(hPack);
 	
-	new client = GetClientOfUserId(ReadPackCell(hPack));
-	new GiftAction:giftAction = GiftAction:ReadPackCell(hPack);
-	new giftTo = ReadPackCell(hPack);
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	GiftAction giftAction = view_as<GiftAction>ReadPackCell(hPack);
+	int giftTo = ReadPackCell(hPack);
 	
 	CloseHandle(hPack);
 	
@@ -708,18 +713,18 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 		return;
 	}
 	
-	new Handle:menu = CreateMenu(ItemMenuSelectHandle);
+	Handle menu = CreateMenu(ItemMenuSelectHandle);
 	SetMenuTitle(menu, "Select item:\n \n");
 	
-	for (new item = 0; item < count; item++)
+	for (int item = 0; item < count; item++)
 	{
-		new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetItemDisplayName(ids[item], sDisplayName, sizeof(sDisplayName));
 		
-		new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		char sDescription[STORE_MAX_DESCRIPTION_LENGTH];
 		Store_GetItemDescription(ids[item], sDescription, sizeof(sDescription));
 		
-		new String:sDisplay[4 + sizeof(sDisplayName) + sizeof(sDescription) + 6];
+		char sDisplay[4 + sizeof(sDisplayName) + sizeof(sDescription) + 6];
 		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
 		
 		if (itemCount[item] > 1)
@@ -732,7 +737,7 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
 		}
 		
-		new String:sItem[32];
+		char sItem[32];
 		Format(sItem, sizeof(sItem), "%d,%d,%d", _:giftAction, giftTo, ids[item]);
 		
 		AddMenuItem(menu, sItem, sDisplay);    
@@ -742,13 +747,13 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public ItemMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int ItemMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sMenuItem[64];
+			char sMenuItem[64];
 			GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 			OpenGiveItemConfirmMenu(client, sMenuItem);
 		}
@@ -757,26 +762,26 @@ public ItemMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 	}
 }
 
-OpenGiveItemConfirmMenu(client, const String:sValue[])
+void OpenGiveItemConfirmMenu(int client, const char[] sValue)
 {
-	new String:sValues[3][16];
+	char sValues[3][16];
 	ExplodeString(sValue, ",", sValues, sizeof(sValues), sizeof(sValues[]));
 
-	new GiftAction:giftAction = GiftAction:StringToInt(sValues[0]);
-	new giftTo = StringToInt(sValues[1]);
-	new itemId = StringToInt(sValues[2]);
+	GiftAction giftAction = view_as<GiftAction>StringToInt(sValues[0]);
+	int giftTo = StringToInt(sValues[1]);
+	int itemId = StringToInt(sValues[2]);
 
-	new String:sName[MAX_NAME_LENGTH];
+	char sName[MAX_NAME_LENGTH];
 	GetClientName(giftTo, sName, sizeof(sName));
 
-	new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+	char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 	Store_GetItemDisplayName(itemId, sDisplayName, sizeof(sDisplayName));
 
-	new Handle:menu = CreateMenu(ItemConfirmMenuSelectItem);
+	Handle menu = CreateMenu(ItemConfirmMenuSelectItem);
 	switch (giftAction)
 	{
-	case GiftAction_Send: SetMenuTitle(menu, "%T", "Gift Item Confirmation", client, sName, sDisplayName);
-	case GiftAction_Drop: SetMenuTitle(menu, "%T", "Drop Item Confirmation", client, sDisplayName);
+		case GiftAction_Send: SetMenuTitle(menu, "%T", "Gift Item Confirmation", client, sName, sDisplayName);
+		case GiftAction_Drop: SetMenuTitle(menu, "%T", "Drop Item Confirmation", client, sDisplayName);
 	}
 
 	AddMenuItem(menu, sValue, "Yes");
@@ -786,33 +791,34 @@ OpenGiveItemConfirmMenu(client, const String:sValue[])
 	DisplayMenu(menu, client, MENU_TIME_FOREVER);
 }
 
-public ItemConfirmMenuSelectItem(Handle:menu, MenuAction:action, client, slot)
+public int ItemConfirmMenuSelectItem(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 	case MenuAction_Select:
 		{
-			new String:sMenuItem[64];
+			char sMenuItem[64];
 			GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 			
 			if (strlen(sMenuItem) != 0)
 			{
-				new String:values[3][16];
+				char values[3][16];
 				ExplodeString(sMenuItem, ",", values, sizeof(values), sizeof(values[]));
 
-				new GiftAction:giftAction = GiftAction:StringToInt(values[0]);
-				new giftTo = StringToInt(values[1]);
-				new itemId = StringToInt(values[2]);
+				GiftAction giftAction = view_as<GiftAction>StringToInt(values[0]);
+				int giftTo = StringToInt(values[1]);
+				int itemId = StringToInt(values[2]);
 				
 				switch (giftAction)
 				{
 				case GiftAction_Send: AskForPermission(client, giftTo, GiftType_Item, itemId);
 				case GiftAction_Drop:
 					{
-						new present = SpawnPresent(client, g_itemModel);
+						int present = SpawnPresent(client, g_itemModel);
+						
 						if (IsValidEntity(present))
 						{
-							new String:data[32];
+							char data[32];
 							Format(data, sizeof(data), "item,%d", itemId);
 
 							strcopy(g_spawnedPresents[present][Present_Data], 64, data);
@@ -826,10 +832,10 @@ public ItemConfirmMenuSelectItem(Handle:menu, MenuAction:action, client, slot)
 		}
 	case MenuAction_DisplayItem:
 		{
-			new String:sDisplay[64];
+			char sDisplay[64];
 			GetMenuItem(menu, slot, "", 0, _, sDisplay, sizeof(sDisplay));
 
-			new String:buffer[255];
+			char buffer[255];
 			Format(buffer, sizeof(buffer), "%T", sDisplay, client);
 
 			return RedrawMenuItem(buffer);
@@ -847,21 +853,21 @@ public ItemConfirmMenuSelectItem(Handle:menu, MenuAction:action, client, slot)
 	return false;
 }
 
-public DropItemCallback(accountId, itemId, any:client)
+public void DropItemCallback(int accountId, int itemId, any client)
 {
-	new String:displayName[64];
+	char displayName[64];
 	Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
 	CPrintToChat(client, "%t%t", "Store Tag Colored", "Gift Item Dropped", displayName);
 }
 
-AskForPermission(client, giftTo, GiftType:giftType, value)
+void AskForPermission(int client, int giftTo, GiftType giftType, int value)
 {
-	new String:sName[MAX_NAME_LENGTH];
+	char sName[MAX_NAME_LENGTH];
 	
 	GetClientName(giftTo, sName, sizeof(sName));
 	CPrintToChatEx(client, giftTo, "%t%t", "Store Tag Colored", "Gift Waiting to accept", client, sName);	
 
-	new String:what[64];
+	char what[64];
 	switch (giftType)
 	{
 		case GiftType_Credits: Format(what, sizeof(what), "%d %s", value, g_currencyName);
@@ -877,37 +883,37 @@ AskForPermission(client, giftTo, GiftType:giftType, value)
 	g_giftRequests[giftTo][GiftRequestValue] = value;
 }
 
-GiftCredits(from, to, amount)
+void GiftCredits(int from, int to, int amount)
 {
 	Store_LogInfo("Client %L is giving currency %i to client %L.", from, amount, to);
 	
-	new Handle:hPack = CreateDataPack();
+	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, from);
 	WritePackCell(hPack, to);
 	
 	Store_RemoveCredits(GetSteamAccountID(from), amount, TakeCreditsCallback, hPack);
 }
 
-public TakeCreditsCallback(accountId, credits, bool:bIsNegative, any:hPack)
+public void TakeCreditsCallback(int accountId, int credits, bool bIsNegative, any hPack)
 {
 	ResetPack(hPack);
 	
 	ReadPackCell(hPack);
-	new to = ReadPackCell(hPack);
+	int to = ReadPackCell(hPack);
 
 	Store_GiveCredits(GetSteamAccountID(to), credits, GiveCreditsCallback, hPack);
 }
 
-public GiveCreditsCallback(accountId, credits, any:hPack)
+public void GiveCreditsCallback(int accountId, int credits, any hPack)
 {
 	ResetPack(hPack);
 
-	new from = ReadPackCell(hPack);
-	new to = ReadPackCell(hPack);
+	int from = ReadPackCell(hPack);
+	int to = ReadPackCell(hPack);
 
 	CloseHandle(hPack);
 
-	new String:sName[MAX_NAME_LENGTH];
+	char sName[MAX_NAME_LENGTH];
 	
 	GetClientName(to, sName, sizeof(sName));	
 	CPrintToChatEx(from, to, "%t%t", "Store Tag Colored", "Gift accepted - sender", sName);
@@ -916,11 +922,11 @@ public GiveCreditsCallback(accountId, credits, any:hPack)
 	CPrintToChatEx(to, from, "%t%t", "Store Tag Colored", "Gift accepted - receiver", sName);
 }
 
-GiftItem(from, to, itemId)
+void GiftItem(int from, int to, int itemId)
 {
 	Store_LogInfo("Client %L is giving ItemID %i to client %L.", from, itemId, to);
 	
-	new Handle:hPack = CreateDataPack();
+	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, from);
 	WritePackCell(hPack, to);
 	WritePackCell(hPack, itemId);
@@ -928,26 +934,26 @@ GiftItem(from, to, itemId)
 	Store_RemoveUserItem(GetSteamAccountID(from), itemId, RemoveUserItemCallback, hPack);
 }
 
-public RemoveUserItemCallback(accountId, itemId, any:hPack)
+public void RemoveUserItemCallback(int accountId, int itemId, any hPack)
 {
 	ResetPack(hPack);
 
 	ReadPackCell(hPack);
-	new to = ReadPackCell(hPack);
+	int to = ReadPackCell(hPack);
 
 	Store_GiveItem(GetSteamAccountID(to), itemId, Store_Gift, GiveItemsCallback, hPack);
 }
 
-public GiveItemsCallback(accountId, any:hPack)
+public void GiveItemsCallback(int accountId, any hPack)
 {
 	ResetPack(hPack);
 
-	new from = ReadPackCell(hPack);
-	new to = ReadPackCell(hPack);
+	int from = ReadPackCell(hPack);
+	int to = ReadPackCell(hPack);
 
 	CloseHandle(hPack);
 
-	new String:sName[MAX_NAME_LENGTH];
+	char sName[MAX_NAME_LENGTH];
 	
 	GetClientName(to, sName, sizeof(sName));	
 	CPrintToChatEx(from, to, "%t%t", "Store Tag Colored", "Gift accepted - sender", sName);
@@ -956,13 +962,13 @@ public GiveItemsCallback(accountId, any:hPack)
 	CPrintToChatEx(to, from, "%t%t", "Store Tag Colored", "Gift accepted - receiver", sName);
 }
 
-SpawnPresent(owner, const String:model[])
+int SpawnPresent(int owner, const char[] model)
 {
-	new present = CreateEntityByName("prop_physics_override");
+	int present = CreateEntityByName("prop_physics_override");
 
 	if (IsValidEntity(present))
 	{
-		new String:targetname[100];
+		char targetname[100];
 
 		Format(targetname, sizeof(targetname), "gift_%i", present);
 
@@ -975,13 +981,13 @@ SpawnPresent(owner, const String:model[])
 		SetEntProp(present, Prop_Send, "m_usSolidFlags", 8);
 		SetEntProp(present, Prop_Send, "m_CollisionGroup", 1);
 		
-		new Float:pos[3];
+		float pos[3];
 		GetClientAbsOrigin(owner, pos);
 		pos[2] += 16;
 
 		TeleportEntity(present, pos, NULL_VECTOR, NULL_VECTOR);
 		
-		new rotator = CreateEntityByName("func_rotating");
+		int rotator = CreateEntityByName("func_rotating");
 		DispatchKeyValueVector(rotator, "origin", pos);
 		DispatchKeyValue(rotator, "targetname", targetname);
 		DispatchKeyValue(rotator, "maxspeed", "200");
@@ -1003,14 +1009,14 @@ SpawnPresent(owner, const String:model[])
 	return present;
 }
 
-public OnStartTouch(present, client)
+public void OnStartTouch(int present, int client)
 {
 	if (!(0 < client <= MaxClients) || g_spawnedPresents[present][Present_Owner] == client)
 	{
 		return;
 	}
 
-	new rotator = GetEntPropEnt(present, Prop_Send, "m_hEffectEntity");
+	int rotator = GetEntPropEnt(present, Prop_Send, "m_hEffectEntity");
 	
 	if (rotator && IsValidEdict(rotator))
 	{
@@ -1019,10 +1025,10 @@ public OnStartTouch(present, client)
 	
 	AcceptEntityInput(present, "Kill");
 	
-	new String:values[2][16];
+	char values[2][16];
 	ExplodeString(g_spawnedPresents[present][Present_Data], ",", values, sizeof(values), sizeof(values[]));
 	
-	new Handle:hPack = CreateDataPack();
+	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, client);
 	WritePackString(hPack, values[0]);
 	
@@ -1032,19 +1038,19 @@ public OnStartTouch(present, client)
 	}
 	else if (StrEqual(values[0], "item"))
 	{
-		new itemId = StringToInt(values[1]);
+		int  itemId = StringToInt(values[1]);
 		WritePackCell(hPack, itemId);
 		Store_GiveItem(GetSteamAccountID(client), itemId, Store_Gift, PickupGiveCallback_Items, hPack);
 	}
 }
 
-public PickupGiveCallback_Credits(accountId, credits, any:hPack)
+public void PickupGiveCallback_Credits(int accountId, int credits, any hPack)
 {
 	ResetPack(hPack);
 	
-	new client = ReadPackCell(hPack);
+	int client = ReadPackCell(hPack);
 	
-	new String:itemType[32];
+	char itemType[32];
 	ReadPackString(hPack, itemType, sizeof(itemType));
 	
 	if (StrEqual(itemType, "credits"))
@@ -1054,20 +1060,20 @@ public PickupGiveCallback_Credits(accountId, credits, any:hPack)
 	}
 }
 
-public PickupGiveCallback_Items(accountId, any:hPack)
+public void PickupGiveCallback_Items(int accountId, any hPack)
 {
 	ResetPack(hPack);
 	
-	new client = ReadPackCell(hPack);
+	int client = ReadPackCell(hPack);
 	
-	new String:itemType[32];
+	char itemType[32];
 	ReadPackString(hPack, itemType, sizeof(itemType));
 	
-	new itemId = ReadPackCell(hPack);
+	int itemId = ReadPackCell(hPack);
 	
 	if (StrEqual(itemType, "item"))
 	{
-		new String:displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		char displayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetItemDisplayName(itemId, displayName, sizeof(displayName));
 		
 		CPrintToChat(client, "%t%t", "Store Tag Colored", "Gift Item Found", displayName); //translate

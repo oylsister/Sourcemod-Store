@@ -22,7 +22,7 @@ enum ELOG_LEVEL
 	ERROR
 }
 
-new String:g_sELogLevel[6][32] =
+char g_sELogLevel[6][32] =
 {
 	"default",
 	"trace",
@@ -33,17 +33,17 @@ new String:g_sELogLevel[6][32] =
 };
 
 //Config Globals
-new String:sLoggingPath[PLATFORM_MAX_PATH];
-new String:sLoggingFilename[64];
-new String:sDateFormat[12];
+char sLoggingPath[PLATFORM_MAX_PATH];
+char sLoggingFilename[64];
+char sDateFormat[12];
 
 //Status of certain types of logs.
-new bool:bLog_Default = true, bool:bLog_Trace = true, bool:bLog_Debug = true, bool:bLog_Info = true, bool:bLog_Warn = true, bool:bLog_Error = true;
+bool bLog_Default = true; bool bLog_Trace = true; bool bLog_Debug = true; bool bLog_Info = true; bool bLog_Warn = true; bool bLog_Error = true;
 
 //Status of certain types under subfolders.
-new bool:bFolder_Default = false, bool:bFolder_Trace = false, bool:bFolder_Debug = false, bool:bFolder_Info = false, bool:bFolder_Warn = false, bool:bFolder_Error = false;
+bool bFolder_Default = false; bool bFolder_Trace = false; bool bFolder_Debug = false; bool bFolder_Info = false; bool bFolder_Warn = false; bool bFolder_Error = false;
 
-public Plugin:myinfo =
+public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
 	author = STORE_AUTHORS,
@@ -52,7 +52,7 @@ public Plugin:myinfo =
 	url = STORE_URL
 };
 
-public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max) 
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) 
 {
 	CreateNative("Store_Log", Native_Store_Log);
 	CreateNative("Store_LogTrace", Native_Store_LogTrace);
@@ -66,7 +66,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	return APLRes_Success;
 }
 
-public OnPluginStart() 
+public void OnPluginStart() 
 {
 	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
 	
@@ -75,12 +75,12 @@ public OnPluginStart()
 	RegServerCmd("sm_teststorelogging", TestStoreLogging);
 }
 
-public Store_OnDatabaseInitialized()
+public void Store_OnDatabaseInitialized()
 {
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
-public Action:TestStoreLogging(args)
+public Action TestStoreLogging(int args)
 {
 	Store_Log("Logging type: Default - Format: %i", 1);
 	Store_LogTrace("Logging type: Trace - Format: %i", 1);
@@ -94,11 +94,11 @@ public Action:TestStoreLogging(args)
 	return Plugin_Handled;
 }
 
-LoadConfig() 
+void LoadConfig() 
 {
-	new Handle:hKV = CreateKeyValues("root");
+	Handle hKV = CreateKeyValues("root");
 	
-	new String:sPath[PLATFORM_MAX_PATH];
+	char sPath[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, sPath, sizeof(sPath), "configs/store/logging.cfg");
 	
 	if (!FileToKeyValues(hKV, sPath)) 
@@ -113,26 +113,26 @@ LoadConfig()
 	
 	if (KvJumpToKey(hKV, "Logging_types"))
 	{
-		bLog_Default = bool:KvGetNum(hKV, "default", 1);
-		bLog_Trace = bool:KvGetNum(hKV, "trace", 1);
-		bLog_Debug = bool:KvGetNum(hKV, "debug", 1);
-		bLog_Info = bool:KvGetNum(hKV, "info", 1);
-		bLog_Warn = bool:KvGetNum(hKV, "warn", 1);
-		bLog_Error = bool:KvGetNum(hKV, "error", 1);
+		bLog_Default = view_as<bool>KvGetNum(hKV, "default", 1);
+		bLog_Trace = view_as<bool>KvGetNum(hKV, "trace", 1);
+		bLog_Debug = view_as<bool>KvGetNum(hKV, "debug", 1);
+		bLog_Info = view_as<bool>KvGetNum(hKV, "info", 1);
+		bLog_Warn = view_as<bool>KvGetNum(hKV, "warn", 1);
+		bLog_Error = view_as<bool>KvGetNum(hKV, "error", 1);
 		
 		KvGoBack(hKV);
 	}
 	
-	new bool:bSubDirectories = bool:KvGetNum(hKV, "log_subfolders", 0);
+	bool bSubDirectories = view_as<bool>KvGetNum(hKV, "log_subfolders", 0);
 	
 	if (bSubDirectories && KvJumpToKey(hKV, "Logging_subfolders"))
 	{
-		bFolder_Default = bool:KvGetNum(hKV, "default", 0);
-		bFolder_Trace = bool:KvGetNum(hKV, "trace", 0);
-		bFolder_Debug = bool:KvGetNum(hKV, "debug", 0);
-		bFolder_Info = bool:KvGetNum(hKV, "info", 0);
-		bFolder_Warn = bool:KvGetNum(hKV, "warn", 0);
-		bFolder_Error = bool:KvGetNum(hKV, "error", 0);
+		bFolder_Default = view_as<bool>KvGetNum(hKV, "default", 0);
+		bFolder_Trace = view_as<bool>KvGetNum(hKV, "trace", 0);
+		bFolder_Debug = view_as<bool>KvGetNum(hKV, "debug", 0);
+		bFolder_Info = view_as<bool>KvGetNum(hKV, "info", 0);
+		bFolder_Warn = view_as<bool>KvGetNum(hKV, "warn", 0);
+		bFolder_Error = view_as<bool>KvGetNum(hKV, "error", 0);
 		
 		KvGoBack(hKV);
 	}
@@ -140,87 +140,87 @@ LoadConfig()
 	CloseHandle(hKV);
 }
 
-public Native_Store_Log(Handle:hPlugin, iParams) 
+public int Native_Store_Log(Handle hPlugin, iParams) 
 {
 	if (!bLog_Default) return;
 	
-	new String:sFormat[1024];
+	char sFormat[1024];
 	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
 	
-	new String:sDate[24];
+	char sDate[24];
 	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
 	
 	Log_File(sLoggingPath, sLoggingFilename, sDate, DEFAULT, bFolder_Default, sFormat);
 }
 
-public Native_Store_LogTrace(Handle:hPlugin, iParams) 
+public int Native_Store_LogTrace(Handle hPlugin, iParams) 
 {
 	if (!bLog_Trace) return;
 	
-	new String:sFormat[1024];
+	char sFormat[1024];
 	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
 	
-	new String:sDate[24];
+	char sDate[24];
 	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
 	
 	Log_File(sLoggingPath, sLoggingFilename, sDate, TRACE, bFolder_Trace, sFormat);
 }
 
-public Native_Store_LogDebug(Handle:hPlugin, iParams) 
+public int Native_Store_LogDebug(Handle hPlugin, iParams) 
 {
 	if (!bLog_Debug) return;
 	
-	new String:sFormat[1024];
+	char sFormat[1024];
 	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
 	
-	new String:sDate[24];
+	char sDate[24];
 	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
 	
 	Log_File(sLoggingPath, sLoggingFilename, sDate, DEBUG, bFolder_Debug, sFormat);
 }
 
-public Native_Store_LogInfo(Handle:hPlugin, iParams) 
+public int Native_Store_LogInfo(Handle hPlugin, iParams) 
 {
 	if (!bLog_Info) return;
 	
-	new String:sFormat[1024];
+	char sFormat[1024];
 	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
 	
-	new String:sDate[24];
+	char sDate[24];
 	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
 	
 	Log_File(sLoggingPath, sLoggingFilename, sDate, INFO, bFolder_Info, sFormat);
 }
 
-public Native_Store_LogWarning(Handle:hPlugin, iParams) 
+public int Native_Store_LogWarning(Handle hPlugin, iParams) 
 {
 	if (!bLog_Warn) return;
 	
-	new String:sFormat[1024];
+	char sFormat[1024];
 	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
 	
-	new String:sDate[24];
+	char sDate[24];
 	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
 	
 	Log_File(sLoggingPath, sLoggingFilename, sDate, WARN, bFolder_Warn, sFormat);
 }
 
-public Native_Store_LogError(Handle:hPlugin, iParams) 
+public int Native_Store_LogError(Handle hPlugin, iParams) 
 {
 	if (!bLog_Error) return;
 	
-	new String:sFormat[1024];
+	char sFormat[1024];
 	FormatNativeString(0, 1, 2, sizeof(sFormat), _, sFormat);
 	
-	new String:sDate[24];
+	char sDate[24];
 	FormatTime(sDate, sizeof(sDate), sDateFormat, GetTime());
 	
 	Log_File(sLoggingPath, sLoggingFilename, sDate, ERROR, bFolder_Error, sFormat);
 }
 
-Log_File(const String:sPath[] = "", const String:sFile[] = "store", const String:sDate[] = "", ELOG_LEVEL:eLevel = DEFAULT, bool:bLogToFolder = false, const String:format[], any:...)
+void Log_File(const char[] sPath = "", const char[] sFile = "store", const char[] sDate = "", ELOG_LEVEL eLevel = DEFAULT, bool bLogToFolder = false, const char[] format, any ...)
 {
-	new String:sPath_Build[PLATFORM_MAX_PATH + 1], String:sLevelPath[PLATFORM_MAX_PATH + 1], String:sFile_Build[PLATFORM_MAX_PATH + 1], String:sBuffer[1024];
+	char sPath_Build[PLATFORM_MAX_PATH + 1]; char sLevelPath[PLATFORM_MAX_PATH + 1]; char sFile_Build[PLATFORM_MAX_PATH + 1]; char sBuffer[1024];
 
 	if (strlen(sPath) != 0)
 	{

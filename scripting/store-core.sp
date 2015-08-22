@@ -10,6 +10,7 @@
 #define MAX_MENU_ITEMS 32
 #define MAX_CHAT_COMMANDS 100
 
+//Main Menu Data
 enum MenuItem
 {
 	String:MenuItemDisplayName[32],
@@ -18,9 +19,14 @@ enum MenuItem
 	Handle:MenuItemPlugin,
 	Store_MenuItemClickCallback:MenuItemCallback,
 	MenuItemOrder,
-	bool:MenuItemTranslate
+	bool:MenuItemTranslate,
+	bool:MenuItemDisabled
 }
 
+int g_menuItems[MAX_MENU_ITEMS + 1][MenuItem];
+int g_menuItemCount;
+
+//Chat Commands Data
 enum ChatCommand
 {
 	String:ChatCommandName[32],
@@ -28,28 +34,32 @@ enum ChatCommand
 	Store_ChatCommandCallback:ChatCommandCallback,
 }
 
+int g_chatCommands[MAX_CHAT_COMMANDS + 1][ChatCommand];
+int g_chatCommandCount;
+
 //Config Globals
-new String:g_currencyName[64];
-new String:g_sqlconfigentry[64];
-new g_firstConnectionCredits = 0;
-new bool:g_hideMenuItemDescriptions = false;
-new g_serverID = -1;
+char g_currencyName[64];
+char g_sqlconfigentry[64];
+char g_updaterURL[2048];
+int g_firstConnectionCredits;
+int g_serverID;
+bool g_hideMenuItemDescriptions;
+bool g_allPluginsLoaded;
 
-new g_chatCommands[MAX_CHAT_COMMANDS + 1][ChatCommand];
-new g_chatCommandCount = 0;
+//Forwards
+Handle g_hOnChatCommandForward;
+Handle g_hOnChatCommandPostForward;
+Handle g_hOnCoreLoaded;
 
-new g_menuItems[MAX_MENU_ITEMS + 1][MenuItem];
-new g_menuItemCount = 0;
+//Late Loads/Updater
+bool bLateLoad;
+bool bUpdater;
 
-new bool:g_allPluginsLoaded = false;
+//Client Globals
+bool bDeveloperMode[MAXPLAYERS + 1];
 
-new Handle:g_hOnChatCommandForward;
-new Handle:g_hOnChatCommandPostForward;
-new Handle:g_hOnCoreLoaded;
-
-new bool:bLateLoad;
-
-public Plugin:myinfo =
+//Plugin Info
+public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
 	author = STORE_AUTHORS,
@@ -58,8 +68,10 @@ public Plugin:myinfo =
 	url = STORE_URL
 };
 
-public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
+//Ask Plugin Load 2
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
+	//Natives
 	CreateNative("Store_OpenMainMenu", Native_OpenMainMenu);
 	CreateNative("Store_AddMainMenuItem", Native_AddMainMenuItem);
 	CreateNative("Store_AddMainMenuItemEx", Native_AddMainMenuItemEx);
@@ -67,7 +79,9 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("Store_GetSQLEntry", Native_GetSQLEntry);
 	CreateNative("Store_RegisterChatCommands", Native_RegisterChatCommands);
 	CreateNative("Store_GetServerID", Native_GetServerID);
+	CreateNative("Store_ClientIsDeveloper", Native_ClientIsDeveloper);
 	
+	//Forwards
 	g_hOnChatCommandForward = CreateGlobalForward("Store_OnChatCommand", ET_Event, Param_Cell, Param_String, Param_String);
 	g_hOnChatCommandPostForward = CreateGlobalForward("Store_OnChatCommand_Post", ET_Ignore, Param_Cell, Param_String, Param_String);
 	g_hOnCoreLoaded = CreateGlobalForward("Store_OnCoreLoaded", ET_Ignore);
@@ -77,7 +91,8 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	return APLRes_Success;
 }
 
-public OnPluginStart()
+//On Plugin Start
+public void OnPluginStart()
 {
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
@@ -87,25 +102,29 @@ public OnPluginStart()
 	
 	CreateConVar(PLUGIN_VERSION_CONVAR, STORE_VERSION, PLUGIN_NAME, FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD);
 	
+	RegAdminCmd("sm_devmode", Command_DeveloperMode, ADMFLAG_ROOT, "Toggles developer mode on the client.");
 	RegAdminCmd("sm_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
 	RegAdminCmd("sm_removecredits", Command_RemoveCredits, ADMFLAG_ROOT, "Remove credits from a player.");
 
 	g_allPluginsLoaded = false;
 	
+	bUpdater = LibraryExists("updater");
+	
 	LoadConfig();
 }
 
-public OnConfigsExecuted()
+public void OnConfigsExecuted()
 {
 	if (bLateLoad)
 	{
 		Call_StartForward(g_hOnCoreLoaded);
 		Call_Finish();
+		
 		bLateLoad = false;
 	}
 }
 
-public OnAllPluginsLoaded()
+public void OnAllPluginsLoaded()
 {
 	SortMainMenuItems();
 	g_allPluginsLoaded = true;
@@ -114,26 +133,42 @@ public OnAllPluginsLoaded()
 	{
 		PrintToServer("%t This plugin has been assigned the ID '%i'.", "Store Tag", g_serverID);
 	}
-	else if (g_serverID == 0)
+	else if (g_serverID < 0)
 	{
-		Store_LogError("The ServerID 0 is reserved for modular use for the system, please choose an ID over the number 1.");
+		g_serverID = 0;
+		Store_LogError("ServerID cannot be under 0, please fix this issue.");
 	}
-	else
+	
+	char sName[32];
+	if (bUpdater && GetPluginInfo(INVALID_HANDLE, PlInfo_Name, sName, sizeof(sName)))
 	{
-		Store_LogError("You must set a unique Server ID (server_id) for this server, please double check your core config.");
+		char sURL[2048];
+		Format(sURL, sizeof(sURL), "%s/%s", g_updaterURL, sName);
+		Updater_AddPlugin(sURL);
 	}
 }
 
-public Store_OnDatabaseInitialized()
+public void Store_OnDatabaseInitialized()
 {
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
-LoadConfig()
+public void OnLibraryAdded(const char[] name)
 {
-	new Handle:kv = CreateKeyValues("root");
+	char sName[32];
+	if (StrEqual(name, "updater") && GetPluginInfo(INVALID_HANDLE, PlInfo_Name, sName, sizeof(sName)))
+	{
+		char sURL[2048];
+		Format(sURL, sizeof(sURL), "%s/%s", g_updaterURL, sName);
+		Updater_AddPlugin(sURL);
+	}
+}
 
-	new String:path[PLATFORM_MAX_PATH];
+void LoadConfig()
+{
+	Handle kv = CreateKeyValues("root");
+
+	char path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/core.cfg");
 
 	if (!FileToKeyValues(kv, path))
@@ -147,7 +182,7 @@ LoadConfig()
 
 	if (KvJumpToKey(kv, "Commands"))
 	{
-		new String:buffer[256];
+		char buffer[256];
 
 		KvGetString(kv, "mainmenu_commands", buffer, sizeof(buffer), "!store /store");
 		Store_RegisterChatCommands(buffer, ChatCommand_OpenMainMenu);
@@ -159,26 +194,44 @@ LoadConfig()
 	}
 
 	g_firstConnectionCredits = KvGetNum(kv, "first_connection_credits");
-	g_hideMenuItemDescriptions = bool:KvGetNum(kv, "hide_menu_descriptions", 0);
-	g_serverID = KvGetNum(kv, "server_id", -1);
+	g_hideMenuItemDescriptions = view_as<bool>KvGetNum(kv, "hide_menu_descriptions", 0);
+	g_serverID = KvGetNum(kv, "server_id", 0);
+	
+	if (KvGetString(kv, "updater_url", g_updaterURL, sizeof(g_updaterURL)))
+	{	
+		char sName[32];
+		if (bUpdater && g_allPluginsLoaded && GetPluginInfo(INVALID_HANDLE, PlInfo_Name, sName, sizeof(sName)))
+		{
+			char sURL[2048];
+			Format(sURL, sizeof(sURL), "%s/%s", g_updaterURL, sName);
+			Updater_AddPlugin(sURL);
+		}
+	}
 	
 	CloseHandle(kv);
 }
 
-public OnClientPostAdminCheck(client)
+public void OnClientPostAdminCheck(int client)
 {
+	bDeveloperMode[client] = false;
+	
 	Store_RegisterClient(client, g_firstConnectionCredits);
 }
 
-public Action:OnClientSayCommand(client, const String:command[], const String:sArgs[])
+public void OnClientDisconnect(int client)
 {
-	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
+	bDeveloperMode[client] = false;
+}
+
+public Action OnClientSayCommand(int client, const char[] command, const char[] sArgs)
+{
+	if (!IsClientInGame(client))
 	{
 		return Plugin_Continue;
 	}
 	
-	new String:sArgsTrimmed[256];
-	new sArgsLen = strlen(sArgs);
+	char sArgsTrimmed[256];
+	int sArgsLen = strlen(sArgs);
 
 	if (sArgsLen >= 2 && sArgs[0] == '"' && sArgs[sArgsLen - 1] == '"')
 	{
@@ -189,7 +242,7 @@ public Action:OnClientSayCommand(client, const String:command[], const String:sA
 		strcopy(sArgsTrimmed, sizeof(sArgsTrimmed), sArgs);
 	}
 
-	static String:cmds[2][256];
+	char cmds[2][256];
 	ExplodeString(sArgsTrimmed, " ", cmds, sizeof(cmds), sizeof(cmds[]), true);
 
 	if (strlen(cmds[0]) <= 0)
@@ -197,11 +250,11 @@ public Action:OnClientSayCommand(client, const String:command[], const String:sA
 		return Plugin_Continue;
 	}
 	
-	for (new i = 0; i < g_chatCommandCount; i++)
+	for (int i = 0; i < g_chatCommandCount; i++)
 	{
 		if (StrEqual(cmds[0], g_chatCommands[i][ChatCommandName], false))
 		{
-			new Action:result = Plugin_Continue;
+			Action result = Plugin_Continue;
 			Call_StartForward(g_hOnChatCommandForward);
 			Call_PushCell(client);
 			Call_PushString(cmds[0]);
@@ -239,22 +292,35 @@ public Action:OnClientSayCommand(client, const String:command[], const String:sA
 	return Plugin_Continue;
 }
 
-public ChatCommand_OpenMainMenu(client)
+public void ChatCommand_OpenMainMenu(int client)
 {
 	OpenMainMenu(client);
 }
 
-public ChatCommand_Credits(client)
+public void ChatCommand_Credits(int client)
 {
 	Store_GetCredits(GetSteamAccountID(client), OnCommandGetCredits, client);
 }
 
-public OnCommandGetCredits(credits, any:client)
+public void OnCommandGetCredits(int credits, any client)
 {
 	CPrintToChat(client, "%t%t", "Store Tag Colored", "Store Menu Credits", credits, g_currencyName);
 }
 
-public Action:Command_GiveCredits(client, args)
+public Action Command_DeveloperMode(int client, int args)
+{
+	switch (bDeveloperMode[client])
+	{
+		case true: bDeveloperMode[client] = false;
+		case false: bDeveloperMode[client] = true;
+	}
+	
+	CPrintToChat(client, "%t%t", "Store Tag Colored", "Store Developer Toggled", bDeveloperMode[client] ? "ON" : "OFF");
+	
+	return Plugin_Handled;
+}
+
+public Action Command_GiveCredits(int client, int args)
 {
 	if (args < 2)
 	{
@@ -262,18 +328,18 @@ public Action:Command_GiveCredits(client, args)
 		return Plugin_Handled;
 	}
 	
-	new String:target[65];
+	char target[64];
 	GetCmdArg(1, target, sizeof(target));
 	
-	new String:sAmount[32];
+	char sAmount[32];
 	GetCmdArg(2, sAmount, sizeof(sAmount));
-	new iMoney = StringToInt(sAmount);
+	int iMoney = StringToInt(sAmount);
 	
-	new target_list[MAXPLAYERS];
-	new String:target_name[MAX_TARGET_LENGTH];
-	new bool:tn_is_ml;
+	int target_list[MAXPLAYERS];
+	char target_name[MAX_TARGET_LENGTH];
+	bool tn_is_ml;
 	
-	new target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml);
+	int target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml);
 
 	if (target_count <= 0)
 	{
@@ -281,12 +347,16 @@ public Action:Command_GiveCredits(client, args)
 		return Plugin_Handled;
 	}
 	
-	new accountIds[target_count];
-	new count = 0;
+	int[] accountIds = new int[target_count];
+	int count;
 	
-	for (new i = 0; i < target_count; i++)
+	for (int i = 0; i < target_count; i++)
 	{
-		if (!IsClientInGame(target_list[i]) || IsFakeClient(target_list[i])) continue;
+		if (!IsClientInGame(target_list[i]) || IsFakeClient(target_list[i]))
+		{
+			continue;
+		}
+		
 		accountIds[count] = GetSteamAccountID(target_list[i]);
 		count++;
 
@@ -297,7 +367,7 @@ public Action:Command_GiveCredits(client, args)
 	return Plugin_Handled;
 }
 
-public Action:Command_RemoveCredits(client, args)
+public Action Command_RemoveCredits(int client, int args)
 {
 	if (args < 2)
 	{
@@ -305,18 +375,18 @@ public Action:Command_RemoveCredits(client, args)
 		return Plugin_Handled;
 	}
 	
-	new String:target[65];
+	char target[64];
 	GetCmdArg(1, target, sizeof(target));
 	
-	new String:sAmount[32];
+	char sAmount[32];
 	GetCmdArg(2, sAmount, sizeof(sAmount));
-	new iMoney = StringToInt(sAmount);
+	int iMoney = StringToInt(sAmount);
 	
-	new target_list[MAXPLAYERS];
-	new String:target_name[MAX_TARGET_LENGTH];
-	new bool:tn_is_ml;
+	int target_list[MAXPLAYERS];
+	char target_name[MAX_TARGET_LENGTH];
+	bool tn_is_ml;
 	
-	new target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml);
+	int target_count = ProcessTargetString(target, 0, target_list, MAXPLAYERS, 0, target_name, sizeof(target_name), tn_is_ml);
 
 	if (target_count <= 0)
 	{
@@ -324,18 +394,22 @@ public Action:Command_RemoveCredits(client, args)
 		return Plugin_Handled;
 	}
 	
-	for (new i = 0; i < target_count; i++)
+	for (int i = 0; i < target_count; i++)
 	{
-		if (!IsClientInGame(target_list[i]) || IsFakeClient(target_list[i])) continue;
+		if (!IsClientInGame(target_list[i]) || IsFakeClient(target_list[i]))
+		{
+			continue;
+		}
+		
 		Store_RemoveCredits(GetSteamAccountID(target_list[i]), iMoney, OnRemoveCreditsCallback, GetClientUserId(client));
 	}
 	
 	return Plugin_Handled;
 }
 
-public OnRemoveCreditsCallback(accountId, credits, bool:bIsNegative, any:data)
+public void OnRemoveCreditsCallback(int accountId, int credits, bool bIsNegative, any data)
 {
-	new client = GetClientOfUserId(data);
+	int client = GetClientOfUserId(data);
 	
 	if (client && IsClientInGame(client))
 	{
@@ -348,10 +422,10 @@ public OnRemoveCreditsCallback(accountId, credits, bool:bIsNegative, any:data)
 	}
 }
 
-AddMainMenuItem(bool:bTranslate, const String:displayName[], const String:description[] = "", const String:value[] = "", Handle:plugin = INVALID_HANDLE, Store_MenuItemClickCallback:callback, order = 32)
+void AddMainMenuItem(bool bTranslate = true, const char[] displayName, const char[] description = "", const char[] value = "", Handle plugin = INVALID_HANDLE, Store_MenuItemClickCallback callback, int order = 32, bool bDisabled = false)
 {
-	new item;
-
+	int item;
+	
 	for (; item <= g_menuItemCount; item++)
 	{
 		if (item == g_menuItemCount || StrEqual(g_menuItems[item][MenuItemDisplayName], displayName))
@@ -367,6 +441,7 @@ AddMainMenuItem(bool:bTranslate, const String:displayName[], const String:descri
 	g_menuItems[item][MenuItemCallback] = callback;
 	g_menuItems[item][MenuItemOrder] = order;
 	g_menuItems[item][MenuItemTranslate] = bTranslate;
+	g_menuItems[item][MenuItemDisabled] = bDisabled;
 
 	if (item == g_menuItemCount)
 	{
@@ -379,13 +454,13 @@ AddMainMenuItem(bool:bTranslate, const String:displayName[], const String:descri
 	}
 }
 
-SortMainMenuItems()
+void SortMainMenuItems()
 {
-	new sortIndex = sizeof(g_menuItems) - 1;
+	int sortIndex = sizeof(g_menuItems) - 1;
 
-	for (new x = 0; x < g_menuItemCount; x++)
+	for (int x = 0; x < g_menuItemCount; x++)
 	{
-		for (new y = 0; y < g_menuItemCount; y++)
+		for (int y = 0; y < g_menuItemCount; y++)
 		{
 			if (g_menuItems[x][MenuItemOrder] < g_menuItems[y][MenuItemOrder])
 			{
@@ -397,26 +472,26 @@ SortMainMenuItems()
 	}
 }
 
-OpenMainMenu(client)
+void OpenMainMenu(int client)
 {
 	Store_GetCredits(GetSteamAccountID(client), OnGetCreditsComplete, GetClientUserId(client));
 }
 
-public OnGetCreditsComplete(credits, any:data)
+public void OnGetCreditsComplete(int credits, any data)
 {
-	new client = GetClientOfUserId(data);
+	int client = GetClientOfUserId(data);
 
 	if (!client)
 	{
 		return;
 	}
 	
-	new Handle:menu = CreateMenu(MainMenuSelectHandle);
+	Handle menu = CreateMenu(MainMenuSelectHandle);
 	SetMenuTitle(menu, "%T\n%T\n \n", "Store Menu Title", client, STORE_VERSION, "Store Menu Credits", client, credits, g_currencyName);
 
-	for (new item = 0; item < g_menuItemCount; item++)
+	for (int item = 0; item < g_menuItemCount; item++)
 	{
-		new String:text[255];
+		char text[MAX_MESSAGE_LENGTH];
 		
 		if(!g_hideMenuItemDescriptions)
 		{
@@ -441,14 +516,14 @@ public OnGetCreditsComplete(credits, any:data)
 			}
 		}
 
-		AddMenuItem(menu, g_menuItems[item][MenuItemValue], text);
+		AddMenuItem(menu, g_menuItems[item][MenuItemValue], text, g_menuItems[item][MenuItemDisabled] ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	}
 
 	SetMenuExitButton(menu, true);
 	DisplayMenu(menu, client, 0);
 }
 
-public MainMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int MainMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
@@ -463,58 +538,58 @@ public MainMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 	}
 }
 
-public Native_OpenMainMenu(Handle:plugin, params)
+public int Native_OpenMainMenu(Handle plugin, int params)
 {
 	OpenMainMenu(GetNativeCell(1));
 }
 
-public Native_AddMainMenuItem(Handle:plugin, params)
+public int Native_AddMainMenuItem(Handle plugin, int params)
 {
-	new String:displayName[32];
+	char displayName[32];
 	GetNativeString(1, displayName, sizeof(displayName));
 
-	new String:description[128];
+	char description[128];
 	GetNativeString(2, description, sizeof(description));
 
-	new String:value[64];
+	char value[64];
 	GetNativeString(3, value, sizeof(value));
 
 	AddMainMenuItem(true, displayName, description, value, plugin, Store_MenuItemClickCallback:GetNativeFunction(4), GetNativeCell(5));
 }
 
-public Native_AddMainMenuItemEx(Handle:plugin, params)
+public int Native_AddMainMenuItemEx(Handle plugin, int params)
 {
-	new String:displayName[32];
+	char displayName[32];
 	GetNativeString(1, displayName, sizeof(displayName));
 
-	new String:description[128];
+	char description[128];
 	GetNativeString(2, description, sizeof(description));
 
-	new String:value[64];
+	char value[64];
 	GetNativeString(3, value, sizeof(value));
 
 	AddMainMenuItem(false, displayName, description, value, plugin, Store_MenuItemClickCallback:GetNativeFunction(4), GetNativeCell(5));
 }
 
-public Native_GetCurrencyName(Handle:plugin, params)
+public int Native_GetCurrencyName(Handle plugin, int params)
 {
 	SetNativeString(1, g_currencyName, GetNativeCell(2));
 }
 
-public Native_GetSQLEntry(Handle:plugin, params)
+public int Native_GetSQLEntry(Handle plugin, int params)
 {
 	SetNativeString(1, g_sqlconfigentry, GetNativeCell(2));
 }
 
-bool:RegisterCommands(Handle:plugin, const String:commands[], Store_ChatCommandCallback:callback)
+bool RegisterCommands(Handle plugin, const char[] commands, Store_ChatCommandCallback callback)
 {
 	if (g_chatCommandCount >= MAX_CHAT_COMMANDS)
 	{
 		return false;
 	}
 	
-	new String:splitcommands[32][32];
-	new count;
+	char splitcommands[32][32];
+	int count;
 
 	count = ExplodeString(commands, " ", splitcommands, sizeof(splitcommands), sizeof(splitcommands[]));
 
@@ -528,9 +603,9 @@ bool:RegisterCommands(Handle:plugin, const String:commands[], Store_ChatCommandC
 		return false;
 	}
 
-	for (new i = 0; i < g_chatCommandCount; i++)
+	for (int i = 0; i < g_chatCommandCount; i++)
 	{
-		for (new n = 0; n < count; n++)
+		for (int n = 0; n < count; n++)
 		{
 			if (StrEqual(splitcommands[n], g_chatCommands[i][ChatCommandName], false))
 			{
@@ -539,7 +614,7 @@ bool:RegisterCommands(Handle:plugin, const String:commands[], Store_ChatCommandC
 		}
 	}
 
-	for (new i = 0; i < count; i++)
+	for (int i = 0; i < count; i++)
 	{
 		strcopy(g_chatCommands[g_chatCommandCount][ChatCommandName], 32, splitcommands[i]);
 		g_chatCommands[g_chatCommandCount][ChatCommandPlugin] = plugin;
@@ -551,23 +626,30 @@ bool:RegisterCommands(Handle:plugin, const String:commands[], Store_ChatCommandC
 	return true;
 }
 
-public Native_RegisterChatCommands(Handle:plugin, params)
+public int Native_RegisterChatCommands(Handle plugin, int params)
 {
-	new String:command[32];
+	char command[32];
 	GetNativeString(1, command, sizeof(command));
 
 	return RegisterCommands(plugin, command, Store_ChatCommandCallback:GetNativeFunction(2));
 }
 
-public Native_GetServerID(Handle:plugin, params)
+public int Native_GetServerID(Handle plugin, int params)
 {
-	if (g_serverID <= 0)
+	if (g_serverID < 0)
 	{
-		new String:sPluginName[128];
+		char sPluginName[128];
 		GetPluginInfo(plugin, PlInfo_Name, sPluginName, sizeof(sPluginName));
-		Store_LogError("Plugin Module '%s' attempted to get the serverID when It's currently set to 0.", sPluginName);
-		return ThrowNativeError(SP_ERROR_NATIVE, "Invalid ServerID currently set, please check core configuration file field 'server_id'.");
+		
+		Store_LogError("Plugin Module '%s' attempted to get the serverID when It's currently set to a number below 0.", sPluginName);
+		
+		return 0;
 	}
 	
 	return g_serverID;
+}
+
+public int Native_ClientIsDeveloper(Handle plugin, int params)
+{
+	return bDeveloperMode[GetNativeCell(1)];
 }

@@ -8,17 +8,19 @@
 #define PLUGIN_VERSION_CONVAR "store_inventory_version"
 
 //Config Globals
-new bool:g_hideEmptyCategories = false;
-new bool:g_showMenuDescriptions = true;
-new bool:g_showItemsMenuDescriptions = true;
+bool g_hideEmptyCategories;
+bool g_showMenuDescriptions = true;
+bool g_showItemsMenuDescriptions = true;
 
-new Handle:g_itemTypes;
-new Handle:g_itemTypeNameIndex;
+Handle g_itemTypes;
+Handle g_itemTypeNameIndex;
 
-new Handle:categories_menu[MAXPLAYERS + 1];
-new iLeft[MAXPLAYERS + 1] =  { 0, ... };
+char g_currencyName[64];
 
-public Plugin:myinfo =
+Handle categories_menu[MAXPLAYERS + 1];
+int iLeft[MAXPLAYERS + 1];
+
+public Plugin myinfo =
 {
 	name = PLUGIN_NAME,
 	author = STORE_AUTHORS,
@@ -27,7 +29,7 @@ public Plugin:myinfo =
 	url = STORE_URL
 };
 
-public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
+public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
 	CreateNative("Store_OpenInventory", Native_OpenInventory);
 	CreateNative("Store_OpenInventoryCategory", Native_OpenInventoryCategory);
@@ -41,7 +43,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	return APLRes_Success;
 }
 
-public OnPluginStart()
+public void OnPluginStart()
 {
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
@@ -57,21 +59,26 @@ public OnPluginStart()
 	LoadConfig();
 }
 
-public Store_OnCoreLoaded()
+public void Store_OnCoreLoaded()
 {
 	Store_AddMainMenuItem("Inventory", "Inventory Description", _, OnMainMenuInventoryClick, 4);
 }
 
-public Store_OnDatabaseInitialized()
+public void OnConfigsExecuted()
+{
+	Store_GetCurrencyName(g_currencyName, sizeof(g_currencyName));
+}
+
+public void Store_OnDatabaseInitialized()
 {
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 }
 
-LoadConfig() 
+void LoadConfig() 
 {
-	new Handle:kv = CreateKeyValues("root");
+	Handle kv = CreateKeyValues("root");
 	
-	new String:path[PLATFORM_MAX_PATH];
+	char path[PLATFORM_MAX_PATH];
 	BuildPath(Path_SM, path, sizeof(path), "configs/store/inventory.cfg");
 	
 	if (!FileToKeyValues(kv, path)) 
@@ -80,45 +87,45 @@ LoadConfig()
 		SetFailState("Can't read config file %s", path);
 	}
 
-	new String:menuCommands[255];
+	char menuCommands[255];
 	KvGetString(kv, "inventory_commands", menuCommands, sizeof(menuCommands), "!inventory /inventory !inv /inv");
 	Store_RegisterChatCommands(menuCommands, ChatCommand_OpenInventory);
 
-	g_hideEmptyCategories = bool:KvGetNum(kv, "hide_empty_categories", 0);
-	g_showMenuDescriptions = bool:KvGetNum(kv, "show_menu_descriptions", 1);
-	g_showItemsMenuDescriptions = bool:KvGetNum(kv, "show_itesm_menu_descriptions", 1);
+	g_hideEmptyCategories = view_as<bool>KvGetNum(kv, "hide_empty_categories", 0);
+	g_showMenuDescriptions = view_as<bool>KvGetNum(kv, "show_menu_descriptions", 1);
+	g_showItemsMenuDescriptions = view_as<bool>KvGetNum(kv, "show_itesm_menu_descriptions", 1);
 	
 	CloseHandle(kv);
 	
 	Store_AddMainMenuItem("Inventory", "Inventory Description", _, OnMainMenuInventoryClick, 4);
 }
 
-public OnMainMenuInventoryClick(client, const String:value[])
+public void OnMainMenuInventoryClick(int client, const char[] value)
 {
 	OpenInventory(client);
 }
 
-public ChatCommand_OpenInventory(client)
+public void ChatCommand_OpenInventory(int client)
 {
 	OpenInventory(client);
 }
 
-public Action:Command_PrintItemTypes(client, args)
+public Action Command_PrintItemTypes(int client, int args)
 {
-	for (new itemTypeIndex = 0, size = GetArraySize(g_itemTypes); itemTypeIndex < size; itemTypeIndex++)
+	for (int itemTypeIndex = 0, size = GetArraySize(g_itemTypes); itemTypeIndex < size; itemTypeIndex++)
 	{
-		new Handle:itemType = Handle:GetArrayCell(g_itemTypes, itemTypeIndex);
+		Handle itemType = view_as<Handle>GetArrayCell(g_itemTypes, itemTypeIndex);
 		
 		ResetPack(itemType);
-		new Handle:plugin = Handle:ReadPackCell(itemType);
+		Handle plugin = view_as<Handle>ReadPackCell(itemType);
 
 		SetPackPosition(itemType, 24);
-		new String:typeName[32];
+		char typeName[32];
 		ReadPackString(itemType, typeName, sizeof(typeName));
 
 		ResetPack(itemType);
 
-		new String:pluginName[32];
+		char pluginName[32];
 		GetPluginFilename(plugin, pluginName, sizeof(pluginName));
 
 		CReplyToCommand(client, " \"%s\" - %s", typeName, pluginName);			
@@ -127,18 +134,19 @@ public Action:Command_PrintItemTypes(client, args)
 	return Plugin_Handled;
 }
 
-OpenInventory(client)
+void OpenInventory(int client)
 {
-	if (client <= 0 || client > MaxClients || !IsClientInGame(client)) //|| categories_menu[client] != INVALID_HANDLE)
+	if (client <= 0 || client > MaxClients || !IsClientInGame(client))
 	{
 		return;
 	}
 	
 	Store_GetCategories(GetCategoriesCallback, true, "", GetClientUserId(client));
 }
-public GetCategoriesCallback(ids[], count, any:data)
+
+public void GetCategoriesCallback(int[] ids, int count, any data)
 {	
-	new client = GetClientOfUserId(data);
+	int client = GetClientOfUserId(data);
 	
 	if (!client)
 	{
@@ -152,32 +160,40 @@ public GetCategoriesCallback(ids[], count, any:data)
 	}
 	
 	categories_menu[client] = CreateMenu(InventoryMenuSelectHandle);
-	SetMenuTitle(categories_menu[client], "%T\n \n", "Inventory", client);
+	SetMenuTitle(categories_menu[client], "%T%s\n \n", "Inventory", client, Store_ClientIsDeveloper(client) ? "[Dev]" : "");
 	
-	new bool:bNoCategories = true;
-	for (new category = 0; category < count; category++)
+	bool bNoCategories = true;
+	for (int category = 0; category < count; category++)
 	{
-		new String:requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
+		char requiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
 		Store_GetCategoryPluginRequired(ids[category], requiredPlugin, sizeof(requiredPlugin));
 		
-		new typeIndex;
-		if (strlen(requiredPlugin) == 0 || !GetTrieValue(g_itemTypeNameIndex, requiredPlugin, typeIndex))
+		int typeIndex;
+		if (strlen(requiredPlugin) != 0 && !GetTrieValue(g_itemTypeNameIndex, requiredPlugin, typeIndex))
 		{
 			iLeft[client] = count - category - 1;
 			CheckLeft(client);
 			continue;
 		}
 
-		new Handle:hPack = CreateDataPack();
+		Handle hPack = CreateDataPack();
 		WritePackCell(hPack, GetClientUserId(client));
 		WritePackCell(hPack, ids[category]);
 		iLeft[client] = count - category - 1;
 		
-		new Handle:filter = CreateTrie();
-		SetTrieValue(filter, "category_id", ids[category]);
-		SetTrieValue(filter, "flags", GetUserFlagBits(client));
-
-		Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientLoadout(client), GetItemsForCategoryCallback, hPack);
+		if (!Store_ClientIsDeveloper(client))
+		{
+			Handle filter = CreateTrie();
+			SetTrieValue(filter, "category_id", ids[category]);
+			SetTrieValue(filter, "flags", GetUserFlagBits(client));
+			
+			Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientCurrentLoadout(client), GetItemsForCategoryCallback, hPack);
+		}
+		else
+		{
+			Store_GetItems(INVALID_HANDLE, GetItemsForCategoryCallback_Dev, true, "", hPack);
+		}
+		
 		bNoCategories = false;
 	}
 	
@@ -187,12 +203,12 @@ public GetCategoriesCallback(ids[], count, any:data)
 	}
 }
 
-public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, loadoutId, any:hPack)
+public int GetItemsForCategoryCallback(int[] ids, bool[] equipped, int[] itemCount, int count, int loadoutId, any hPack)
 {
 	ResetPack(hPack);
 	
-	new client = GetClientOfUserId(ReadPackCell(hPack));
-	new categoryId = ReadPackCell(hPack);
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	int categoryId = ReadPackCell(hPack);
 	
 	CloseHandle(hPack);
 		
@@ -203,16 +219,16 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	
 	if (!g_hideEmptyCategories || count > 0)
 	{
-		new String:sValue[8];
+		char sValue[8];
 		IntToString(categoryId, sValue, sizeof(sValue));
 	
-		new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetCategoryDisplayName(categoryId, sDisplayName, sizeof(sDisplayName));
 		
-		new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		char sDescription[STORE_MAX_DESCRIPTION_LENGTH];
 		Store_GetCategoryDescription(categoryId, sDescription, sizeof(sDescription));
 		
-		new String:sDisplay[sizeof(sDisplayName) + 1 + sizeof(sDescription)];
+		char sDisplay[sizeof(sDisplayName) + 1 + sizeof(sDescription)];
 		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
 		
 		if (g_showMenuDescriptions)
@@ -226,23 +242,61 @@ public GetItemsForCategoryCallback(ids[], bool:equipped[], itemCount[], count, l
 	CheckLeft(client);
 }
 
-CheckLeft(client)
+public void GetItemsForCategoryCallback_Dev(int[] ids, int count, any hPack)
+{
+	ResetPack(hPack);
+
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	int categoryId = ReadPackCell(hPack);
+
+	CloseHandle(hPack);
+	
+	if (!client || !IsClientInGame(client))
+	{
+		return;
+	}
+
+	if (!g_hideEmptyCategories || count > 0)
+	{
+		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		Store_GetCategoryDisplayName(categoryId, sDisplayName, sizeof(sDisplayName));
+		
+		char sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		Store_GetCategoryDescription(categoryId, sDescription, sizeof(sDescription));
+		
+		char sDisplay[sizeof(sDisplayName) + 1 + sizeof(sDescription)];
+		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
+
+		if (g_showMenuDescriptions)
+		{
+			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
+		}
+
+		char sItem[12];
+		IntToString(categoryId, sItem, sizeof(sItem));
+
+		AddMenuItem(categories_menu[client], sItem, sDisplay);
+	}
+	
+	CheckLeft(client);
+}
+
+void CheckLeft(int client)
 {
 	if (iLeft[client] <= 0)
 	{
 		SetMenuExitBackButton(categories_menu[client], true);
 		DisplayMenu(categories_menu[client], client, 0);
-		//categories_menu[client] = INVALID_HANDLE;
 	}
 }
 
-public InventoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int InventoryMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 		case MenuAction_Select:
 			{
-				new String:sMenuItem[64];
+				char sMenuItem[64];
 				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 				OpenInventoryCategory(client, StringToInt(sMenuItem));
 			}
@@ -253,31 +307,37 @@ public InventoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
 					Store_OpenMainMenu(client);
 				}
 			}
-		//case MenuAction_End: CloseHandle(menu);
 	}
 }
 
-OpenInventoryCategory(client, categoryId, slot = 0)
+void OpenInventoryCategory(int client, int categoryId, int slot = 0)
 {
-	new Handle:hPack = CreateDataPack();
+	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, GetClientUserId(client));
 	WritePackCell(hPack, categoryId);
 	WritePackCell(hPack, slot);
 	
-	new Handle:filter = CreateTrie();
-	SetTrieValue(filter, "category_id", categoryId);
-	SetTrieValue(filter, "flags", GetUserFlagBits(client));
-
-	Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientLoadout(client), GetUserItemsCallback, hPack);
+	if (!Store_ClientIsDeveloper(client))
+	{
+		Handle filter = CreateTrie();
+		SetTrieValue(filter, "category_id", categoryId);
+		SetTrieValue(filter, "flags", GetUserFlagBits(client));
+		
+		Store_GetUserItems(filter, GetSteamAccountID(client), Store_GetClientCurrentLoadout(client), GetUserItemsCallback, hPack);
+	}
+	else
+	{
+		Store_GetItems(INVALID_HANDLE, GetItemsCallback, true, "", hPack);
+	}
 }
 
-public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutId, any:hPack)
+public void GetUserItemsCallback(int[] ids, bool[] equipped, int[] itemCount, int count, int loadoutId, any hPack)
 {
 	ResetPack(hPack);
 	
-	new client = GetClientOfUserId(ReadPackCell(hPack));
-	new categoryId = ReadPackCell(hPack);
-	new slot = ReadPackCell(hPack);
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	int categoryId = ReadPackCell(hPack);
+	int slot = ReadPackCell(hPack);
 	
 	CloseHandle(hPack);
 		
@@ -293,21 +353,21 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 		return;
 	}
 	
-	new String:categoryDisplayName[64];
+	char categoryDisplayName[64];
 	Store_GetCategoryDisplayName(categoryId, categoryDisplayName, sizeof(categoryDisplayName));
 		
-	new Handle:menu = CreateMenu(InventoryCategoryMenuSelectHandle);
-	SetMenuTitle(menu, "%T - %s\n \n", "Inventory", client, categoryDisplayName);
+	Handle menu = CreateMenu(InventoryCategoryMenuSelectHandle);
+	SetMenuTitle(menu, "%T - %s%s\n \n", "Inventory", client, categoryDisplayName, Store_ClientIsDeveloper(client) ? "[Dev]" : "");
 	
-	for (new item = 0; item < count; item++)
+	for (int item = 0; item < count; item++)
 	{
-		new String:sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		Store_GetItemDisplayName(ids[item], sDisplayName, sizeof(sDisplayName));
 		
-		new String:sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		char sDescription[STORE_MAX_DESCRIPTION_LENGTH];
 		Store_GetItemDescription(ids[item], sDescription, sizeof(sDescription));
 		
-		new String:sDisplay[4 + sizeof(sDisplayName) + sizeof(sDescription)+ 6];
+		char sDisplay[4 + sizeof(sDisplayName) + sizeof(sDescription)+ 6];
 		Format(sDisplay, sizeof(sDisplay), "%s", sDisplayName);
 		
 		if (equipped[item])
@@ -325,7 +385,7 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
 		}
 		
-		new String:sItem[16];
+		char sItem[16];
 		Format(sItem, sizeof(sItem), "%b,%d", equipped[item], ids[item]);
 		
 		AddMenuItem(menu, sItem, sDisplay);
@@ -342,31 +402,85 @@ public GetUserItemsCallback(ids[], bool:equipped[], itemCount[], count, loadoutI
 	DisplayMenu(menu, client, 0);
 }
 
-public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client, slot)
+public int GetItemsCallback(int[] ids, int count, any hPack)
+{
+	ResetPack(hPack);
+
+	int client = GetClientOfUserId(ReadPackCell(hPack));
+	int categoryId = ReadPackCell(hPack);
+
+	CloseHandle(hPack);
+	
+	if (!client || !IsClientInGame(client))
+	{
+		return;
+	}
+	
+	if (count == 0)
+	{
+		CPrintToChat(client, "%t%t", "Store Tag Colored", "No items in this category");
+		OpenInventory(client);
+
+		return;
+	}
+
+	char categoryDisplayName[64];
+	Store_GetCategoryDisplayName(categoryId, categoryDisplayName, sizeof(categoryDisplayName));
+
+	Handle menu = CreateMenu(ShopCategoryMenuSelectHandle);
+	SetMenuTitle(menu, "%T - %s%s\n \n", "Shop", client, categoryDisplayName, Store_ClientIsDeveloper(client) ? "[Dev]" : "");
+
+	for (int item = 0; item < count; item++)
+	{
+		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
+		Store_GetItemDisplayName(ids[item], sDisplayName, sizeof(sDisplayName));
+		
+		char sDescription[STORE_MAX_DESCRIPTION_LENGTH];
+		Store_GetItemDescription(ids[item], sDescription, sizeof(sDescription));
+		
+		char sDisplay[sizeof(sDisplayName) + sizeof(sDescription) + 5];
+		Format(sDisplay, sizeof(sDisplay), "%s [%d %s]", sDisplayName, Store_GetItemPrice(ids[item]), g_currencyName);
+
+		if (g_showMenuDescriptions)
+		{
+			Format(sDisplay, sizeof(sDisplay), "%s\n%s", sDisplay, sDescription);
+		}
+
+		char sItem[12];
+		IntToString(ids[item], sItem, sizeof(sItem));
+
+		AddMenuItem(menu, sItem, sDisplay);
+	}
+
+	SetMenuExitBackButton(menu, true);
+	DisplayMenu(menu, client, 0);
+}
+
+public int ShopCategoryMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
 {
 	switch (action)
 	{
 		case MenuAction_Select:
 			{
-				new String:sMenuItem[64];
+				char sMenuItem[64];
 				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
 				
-				new String:buffers[2][16];
+				char buffers[2][16];
 				ExplodeString(sMenuItem, ",", buffers, sizeof(buffers), sizeof(buffers[]));
 				
-				new bool:equipped = bool:StringToInt(buffers[0]);
-				new id = StringToInt(buffers[1]);
+				bool equipped = view_as<bool>StringToInt(buffers[0]);
+				int id = StringToInt(buffers[1]);
 				
-				new String:name[STORE_MAX_NAME_LENGTH];
+				char name[STORE_MAX_NAME_LENGTH];
 				Store_GetItemName(id, name, sizeof(name));
 				
-				new String:type[STORE_MAX_TYPE_LENGTH];
+				char type[STORE_MAX_TYPE_LENGTH];
 				Store_GetItemType(id, type, sizeof(type));
 				
-				new String:loadoutSlot[STORE_MAX_LOADOUTSLOT_LENGTH];
+				char loadoutSlot[STORE_MAX_LOADOUTSLOT_LENGTH];
 				Store_GetItemLoadoutSlot(id, loadoutSlot, sizeof(loadoutSlot));
 				
-				new itemTypeIndex = -1;
+				int itemTypeIndex = -1;
 				GetTrieValue(g_itemTypeNameIndex, type, itemTypeIndex);
 				
 				if (itemTypeIndex == -1)
@@ -379,13 +493,13 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 					return;
 				}
 				
-				new Store_ItemUseAction:callbackValue = Store_DoNothing;
+				Store_ItemUseAction callbackValue = Store_DoNothing;
 				
-				new Handle:itemType = GetArrayCell(g_itemTypes, itemTypeIndex);
+				Handle itemType = GetArrayCell(g_itemTypes, itemTypeIndex);
 				ResetPack(itemType);
 				
-				new Handle:plugin = Handle:ReadPackCell(itemType);
-				new Store_ItemUseCallback:callback = Store_ItemUseCallback:ReadPackFunction(itemType);
+				Handle plugin = view_as<Handle>ReadPackCell(itemType);
+				Store_ItemUseCallback callback = view_as<Store_ItemUseCallback>ReadPackFunction(itemType);
 				
 				Call_StartFunction(plugin, callback);
 				Call_PushCell(client);
@@ -395,7 +509,7 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 				
 				if (callbackValue != Store_DoNothing)
 				{
-					new auth = GetSteamAccountID(client);
+					int auth = GetSteamAccountID(client);
 
 					if (callbackValue == Store_EquipItem)
 					{
@@ -405,7 +519,7 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 						}
 						else
 						{
-							Store_SetItemEquippedState(auth, id, Store_GetClientLoadout(client), true, EquipItemCallback, GetClientUserId(client));
+							Store_SetItemEquippedState(auth, id, Store_GetClientCurrentLoadout(client), true, EquipItemCallback, GetClientUserId(client));
 						}
 					}
 					else if (callbackValue == Store_UnequipItem)
@@ -416,7 +530,101 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 						}
 						else
 						{				
-							Store_SetItemEquippedState(auth, id, Store_GetClientLoadout(client), false, EquipItemCallback, GetClientUserId(client));
+							Store_SetItemEquippedState(auth, id, Store_GetClientCurrentLoadout(client), false, EquipItemCallback, GetClientUserId(client));
+						}
+					}
+					else if (callbackValue == Store_DeleteItem)
+					{
+						Store_RemoveUserItem(auth, id, UseItemCallback, GetClientUserId(client));
+					}
+				}
+			}
+		case MenuAction_Cancel:
+			{
+				if (slot == MenuCancel_ExitBack)
+				{
+					OpenInventory(client);
+				}
+			}
+		case MenuAction_End: CloseHandle(menu);
+	}
+}
+
+public int InventoryCategoryMenuSelectHandle(Handle menu, MenuAction action, int client, int slot)
+{
+	switch (action)
+	{
+		case MenuAction_Select:
+			{
+				char sMenuItem[64];
+				GetMenuItem(menu, slot, sMenuItem, sizeof(sMenuItem));
+				
+				char buffers[2][16];
+				ExplodeString(sMenuItem, ",", buffers, sizeof(buffers), sizeof(buffers[]));
+				
+				bool equipped = view_as<bool>StringToInt(buffers[0]);
+				int id = StringToInt(buffers[1]);
+				
+				char name[STORE_MAX_NAME_LENGTH];
+				Store_GetItemName(id, name, sizeof(name));
+				
+				char type[STORE_MAX_TYPE_LENGTH];
+				Store_GetItemType(id, type, sizeof(type));
+				
+				char loadoutSlot[STORE_MAX_LOADOUTSLOT_LENGTH];
+				Store_GetItemLoadoutSlot(id, loadoutSlot, sizeof(loadoutSlot));
+				
+				int itemTypeIndex = -1;
+				GetTrieValue(g_itemTypeNameIndex, type, itemTypeIndex);
+				
+				if (itemTypeIndex == -1)
+				{
+					CPrintToChat(client, "%t%t", "Store Tag Colored", "Item type not registered", type);
+					Store_LogWarning("The item type '%s' wasn't registered by any plugin.", type);
+					
+					OpenInventoryCategory(client, Store_GetItemCategory(id));
+					
+					return;
+				}
+				
+				Store_ItemUseAction callbackValue = Store_DoNothing;
+				
+				Handle itemType = GetArrayCell(g_itemTypes, itemTypeIndex);
+				ResetPack(itemType);
+				
+				Handle plugin = view_as<Handle>ReadPackCell(itemType);
+				Store_ItemUseCallback callback = view_as<Store_ItemUseCallback>ReadPackFunction(itemType);
+				
+				Call_StartFunction(plugin, callback);
+				Call_PushCell(client);
+				Call_PushCell(id);
+				Call_PushCell(equipped);
+				Call_Finish(callbackValue);
+				
+				if (callbackValue != Store_DoNothing)
+				{
+					int auth = GetSteamAccountID(client);
+
+					if (callbackValue == Store_EquipItem)
+					{
+						if (StrEqual(loadoutSlot, ""))
+						{
+							Store_LogWarning("A user tried to equip an item that doesn't have a loadout slot.");
+						}
+						else
+						{
+							Store_SetItemEquippedState(auth, id, Store_GetClientCurrentLoadout(client), true, EquipItemCallback, GetClientUserId(client));
+						}
+					}
+					else if (callbackValue == Store_UnequipItem)
+					{
+						if (StrEqual(loadoutSlot, ""))
+						{
+							Store_LogWarning("A user tried to unequip an item that doesn't have a loadout slot.");
+						}
+						else
+						{				
+							Store_SetItemEquippedState(auth, id, Store_GetClientCurrentLoadout(client), false, EquipItemCallback, GetClientUserId(client));
 						}
 					}
 					else if (callbackValue == Store_DeleteItem)
@@ -430,9 +638,9 @@ public InventoryCategoryMenuSelectHandle(Handle:menu, MenuAction:action, client,
 	}
 }
 
-public EquipItemCallback(accountId, itemId, loadoutId, any:data)
+public void EquipItemCallback(int accountId, int itemId, int loadoutId, any data)
 {
-	new client = GetClientOfUserId(data);
+	int client = GetClientOfUserId(data);
 		
 	if (!client || !IsClientInGame(client))
 	{
@@ -442,9 +650,9 @@ public EquipItemCallback(accountId, itemId, loadoutId, any:data)
 	OpenInventoryCategory(client, Store_GetItemCategory(itemId));
 }
 
-public UseItemCallback(accountId, itemId, any:data)
+public void UseItemCallback(int accountId, int itemId, any data)
 {
-	new client = GetClientOfUserId(data);
+	int client = GetClientOfUserId(data);
 		
 	if (!client || !IsClientInGame(client))
 	{
@@ -454,7 +662,7 @@ public UseItemCallback(accountId, itemId, any:data)
 	OpenInventoryCategory(client, Store_GetItemCategory(itemId));
 }
 
-RegisterItemType(const String:type[], Handle:plugin, Store_ItemUseCallback:useCallback, Store_ItemGetAttributesCallback:attrsCallback = INVALID_FUNCTION)
+void RegisterItemType(const char[] type, Handle plugin, Store_ItemUseCallback useCallback, Store_ItemGetAttributesCallback attrsCallback = INVALID_FUNCTION)
 {
 	if (g_itemTypes == INVALID_HANDLE)
 	{
@@ -467,79 +675,79 @@ RegisterItemType(const String:type[], Handle:plugin, Store_ItemUseCallback:useCa
 	}
 	else
 	{
-		new itemType;
+		int itemType;
 		if (GetTrieValue(g_itemTypeNameIndex, type, itemType))
 		{
-			CloseHandle(Handle:GetArrayCell(g_itemTypes, itemType));
+			CloseHandle(view_as<Handle>GetArrayCell(g_itemTypes, itemType));
 		}
 	}
 
-	new Handle:itemType = CreateDataPack();
+	Handle itemType = CreateDataPack();
 	WritePackCell(itemType, _:plugin);
 	WritePackFunction(itemType, useCallback);
 	WritePackFunction(itemType, attrsCallback);
 	WritePackString(itemType, type);
 
-	new index = PushArrayCell(g_itemTypes, itemType);
+	int index = PushArrayCell(g_itemTypes, itemType);
 	SetTrieValue(g_itemTypeNameIndex, type, index);
 }
 
-public Native_OpenInventory(Handle:plugin, params)
+public int Native_OpenInventory(Handle plugin, numParams)
 {       
 	OpenInventory(GetNativeCell(1));
 }
 
-public Native_OpenInventoryCategory(Handle:plugin, params)
+public int Native_OpenInventoryCategory(Handle plugin, numParams)
 {       
 	OpenInventoryCategory(GetNativeCell(1), GetNativeCell(2));
 }
 
-public Native_RegisterItemType(Handle:plugin, params)
+public int Native_RegisterItemType(Handle plugin, numParams)
 {
-	new String:type[STORE_MAX_TYPE_LENGTH];
+	char type[STORE_MAX_TYPE_LENGTH];
 	GetNativeString(1, type, sizeof(type));
 	RegisterItemType(type, plugin, Store_ItemUseCallback:GetNativeFunction(2), Store_ItemGetAttributesCallback:GetNativeFunction(3));
 }
 
-public Native_IsItemTypeRegistered(Handle:plugin, params)
+public int Native_IsItemTypeRegistered(Handle plugin, params)
 {
-	new String:type[STORE_MAX_TYPE_LENGTH];
+	char type[STORE_MAX_TYPE_LENGTH];
 	GetNativeString(1, type, sizeof(type));
 		
-	new typeIndex;
+	int typeIndex;
 	return GetTrieValue(g_itemTypeNameIndex, type, typeIndex);
 }
 
-public Native_CallItemAttrsCallback(Handle:plugin, params)
+public int Native_CallItemAttrsCallback(Handle plugin, params)
 {
 	if (g_itemTypeNameIndex == INVALID_HANDLE)
 	{
 		return false;
 	}
 	
-	new String:type[STORE_MAX_TYPE_LENGTH];
+	char type[STORE_MAX_TYPE_LENGTH];
 	GetNativeString(1, type, sizeof(type));
 
-	new typeIndex;
+	int typeIndex;
 	if (!GetTrieValue(g_itemTypeNameIndex, type, typeIndex))
 	{
 		return false;
 	}
 
-	new String:name[STORE_MAX_NAME_LENGTH];
+	char name[STORE_MAX_NAME_LENGTH];
 	GetNativeString(2, name, sizeof(name));
 
-	new String:attrs[STORE_MAX_ATTRIBUTES_LENGTH];
+	char attrs[STORE_MAX_ATTRIBUTES_LENGTH];
 	GetNativeString(3, attrs, sizeof(attrs));		
 
-	new Handle:hPack = GetArrayCell(g_itemTypes, typeIndex);
+	Handle hPack = GetArrayCell(g_itemTypes, typeIndex);
 	ResetPack(hPack);
 
-	new Handle:callbackPlugin = Handle:ReadPackCell(hPack);
+	Handle callbackPlugin = view_as<Handle>ReadPackCell(hPack);
 	
 	ReadPackFunction(hPack);
 	
-	new Store_ItemGetAttributesCallback:callback = Store_ItemGetAttributesCallback:ReadPackFunction(hPack);
+	Store_ItemGetAttributesCallback callback = view_as<Store_ItemGetAttributesCallback>ReadPackFunction(hPack);
 	
 	if (callback == INVALID_FUNCTION)
 	{

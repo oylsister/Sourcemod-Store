@@ -63,8 +63,8 @@ native json_type:json_typeof(Handle:hObj);
  *
  * @return                  False if the type does not exist.
  */
-stock bool:Stringify_json_type(json_type:in, String:out[], maxlength) {
-	switch(in) {
+stock bool:Stringify_json_type(json_type:in2, String:out[], maxlength) {
+	switch(in2) {
 		case JSON_OBJECT:		strcopy(out, maxlength, "Object");
 		case JSON_ARRAY:		strcopy(out, maxlength, "Array");
 		case JSON_STRING:		strcopy(out, maxlength, "String");

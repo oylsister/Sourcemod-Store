@@ -22,7 +22,7 @@ new String:g_game[STORE_MAX_LOADOUTGAME_LENGTH];
 new g_clientLoadout[MAXPLAYERS+1];
 new Handle:g_lastClientLoadout;
 
-new bool:g_databaseInitialized = false;
+new bool:g_databaseInitialized;
 
 public Plugin:myinfo =
 {
@@ -37,10 +37,12 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
 	CreateNative("Store_OpenLoadoutMenu", Native_OpenLoadoutMenu);
 	CreateNative("Store_GetClientCurrentLoadout", Native_GetClientLoadout);
+	CreateNative("Store_GetClientLoadout", Native_GetClientLoadout);
 	
 	g_clientLoadoutChangedForward = CreateGlobalForward("Store_OnClientLoadoutChanged", ET_Event, Param_Cell);
 	
-	RegPluginLibrary("store-loadouts");	
+	RegPluginLibrary("store-loadout");
+	RegPluginLibrary("store-loadouts");
 	return APLRes_Success;
 }
 

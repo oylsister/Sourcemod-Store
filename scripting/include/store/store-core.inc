@@ -17,8 +17,8 @@ typeset Store_ChatCommandCallback
 }
 
 //Forwards
-forward Action Store_OnChatCommand(client, const String:command[], const String:args[]);
-forward void Store_OnChatCommand_Post(client, const String:command[], const String:args[]);
+forward Action Store_OnChatCommand(client, const char[] command, const char[] args);
+forward void Store_OnChatCommand_Post(client, const char[] command, const char[] args);
 forward void Store_OnCoreLoaded();
 
 /**
@@ -28,7 +28,7 @@ forward void Store_OnCoreLoaded();
  *
  * @noreturn
  */
-native void Store_OpenMainMenu(client);
+native void Store_OpenMainMenu(int client);
 
 /**
  * Adds an item to the main menu.
@@ -42,7 +42,7 @@ native void Store_OpenMainMenu(client);
  *
  * @noreturn
  */
-native void Store_AddMainMenuItem(const String:displayName[], const String:description[] = "", const String:value[] = "", Store_MenuItemClickCallback:callback, order = 32, bool:bIsDisabled = false);
+native void Store_AddMainMenuItem(const char[] displayName, const char[] description = "", const char[] value = "", Store_MenuItemClickCallback callback, int order = 32, bool bIsDisabled = false);
 
 /**
  * Adds an item to the main menu. (Difference between the versions is this one doesn't use translations)
@@ -56,7 +56,7 @@ native void Store_AddMainMenuItem(const String:displayName[], const String:descr
  *
  * @noreturn
  */
-native void Store_AddMainMenuItemEx(const String:displayName[], const String:description[] = "", const String:value[] = "", Store_MenuItemClickCallback:callback, order = 32, bool:bIsDisabled = false);
+native void Store_AddMainMenuItemEx(const char[] displayName, const char[] description = "", const char[] value = "", Store_MenuItemClickCallback callback, int order = 32, bool bIsDisabled = false);
 
 /**
  * Retrieve currency name as it is defined in the core config file.
@@ -66,7 +66,7 @@ native void Store_AddMainMenuItemEx(const String:displayName[], const String:des
  *
  * @noreturn
  */
-native void Store_GetCurrencyName(String:currencyName[], maxLength);
+native void Store_GetCurrencyName(char[] currencyName, int maxLength);
 
 /**
 * Retrieve sql config entry as it is defined in the core config file.
@@ -76,7 +76,7 @@ native void Store_GetCurrencyName(String:currencyName[], maxLength);
 *
 * @noreturn
 */
-native void Store_GetSQLEntry(String:sqlEntryName[], maxLength);
+native void Store_GetSQLEntry(char[] sqlEntryName, int maxLength);
 
 /**
  * Registers commands with the store plugin.
@@ -86,7 +86,7 @@ native void Store_GetSQLEntry(String:sqlEntryName[], maxLength);
  *
  * @return Returns false if a duplicate command or number of commands > MAX_CHAT_COMMANDS, otherwise true.
  */
-native bool Store_RegisterChatCommands(const String:commands[], Store_ChatCommandCallback:callback);
+native bool Store_RegisterChatCommands(const char[] commands, Store_ChatCommandCallback callback);
 
 /**
  * Retrieve the server's assigned ID, this is used mostly for web panel functionality.
@@ -104,7 +104,7 @@ native int Store_GetServerID();
  */
 native bool Store_ClientIsDeveloper(client);
 
-public SharedPlugin:__pl_store =
+public SharedPlugin __pl_store =
 {
 	name = "store",
 	file = "store-core.smx",

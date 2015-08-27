@@ -41,6 +41,7 @@ int g_chatCommandCount;
 char g_currencyName[64];
 char g_sqlconfigentry[64];
 char g_updaterURL[2048];
+bool g_hideChatCommands;
 int g_firstConnectionCredits;
 int g_serverID;
 bool g_hideMenuItemDescriptions;
@@ -192,7 +193,8 @@ void LoadConfig()
 
 		KvGoBack(kv);
 	}
-
+	
+	g_hideChatCommands = view_as<bool>KvGetNum(kv, "hide_chat_commands", 0);
 	g_firstConnectionCredits = KvGetNum(kv, "first_connection_credits");
 	g_hideMenuItemDescriptions = view_as<bool>KvGetNum(kv, "hide_menu_descriptions", 0);
 	g_serverID = KvGetNum(kv, "server_id", 0);
@@ -278,7 +280,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 			Call_PushString(cmds[1]);
 			Call_Finish();
 
-			if (cmds[0][0] == 0x2F)
+			if (cmds[0][0] == 0x2F || g_hideChatCommands)
 			{
 				return Plugin_Handled;
 			}

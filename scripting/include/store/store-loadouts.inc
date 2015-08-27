@@ -4,7 +4,7 @@
 #define _store_loadouts_included
 
 //Forwards
-forward void Store_OnClientLoadoutChanged(client);
+forward void Store_OnClientLoadoutChanged(int client);
 
 /**
  * Opens the loadout menu for a client.
@@ -13,7 +13,7 @@ forward void Store_OnClientLoadoutChanged(client);
  *
  * @noreturn
  */
-native void Store_OpenLoadoutMenu(client);
+native void Store_OpenLoadoutMenu(int client);
 
 /**
  * Gets client current loadout.
@@ -22,7 +22,7 @@ native void Store_OpenLoadoutMenu(client);
  *
  * @return Loadout index.
  */
-native int Store_GetClientCurrentLoadout(client);
+native int Store_GetClientCurrentLoadout(int client);
 
 public SharedPlugin __pl_store_loadouts =
 {

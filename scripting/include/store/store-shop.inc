@@ -14,7 +14,7 @@ forward void Store_OnBuyItem_Post(int client, int itemId, bool success);
  *
  * @noreturn
  */
-native void Store_OpenShop(client);
+native void Store_OpenShop(int client);
 
 /**
  * Opens the shop menu for a client in a specific category.
@@ -24,9 +24,9 @@ native void Store_OpenShop(client);
  *
  * @noreturn
  */
-native void Store_OpenShopCategory(client, categoryId);
+native void Store_OpenShopCategory(int client, int categoryId);
 
-public SharedPlugin:__pl_store_shop =
+public SharedPlugin __pl_store_shop =
 {
     name = "store-shop",
     file = "store-shop.smx",

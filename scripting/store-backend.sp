@@ -4,6 +4,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 //Defines
 #define PLUGIN_NAME "[Store] Backend Module"
 #define PLUGIN_DESCRIPTION "Backend module for the Sourcemod Store."
@@ -275,7 +278,26 @@ void LoadConfig()
 //On All Plugins Loaded
 public void OnAllPluginsLoaded()
 {
+	//Mostly for CSGO it seems.
+	if (!IsServerProcessing())
+	{
+		CreateTimer(2.0, CheckServerProcessing, _, TIMER_REPEAT);
+		return;
+	}
+	
 	ConnectSQL();
+}
+
+//Check if the server is processing if it's not then enable the SQL connection.
+public Action CheckServerProcessing(Handle hTimer)
+{
+	if (!IsServerProcessing())
+	{
+		return Plugin_Continue;
+	}
+	
+	ConnectSQL();
+	return Plugin_Stop;
 }
 
 //On Plugin End
@@ -296,10 +318,10 @@ public void OnMapStart()
 //Function - Registration of new clients from AccountID's and names manually.
 void Register(int accountId, const char[] name = "", int credits = 0)
 {
-	new String:safeName[2 * 32 + 1];
+	char safeName[2 * 32 + 1];
 	SQL_EscapeString(g_hSQL, name, safeName, sizeof(safeName));
 
-	new String:sQuery[MAX_QUERY_SIZES];
+	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_Register, accountId, safeName, credits, safeName);
 	Store_Local_TQuery("Register", SQLCall_Registration, sQuery, _, DBPrio_High);
 }
@@ -364,8 +386,8 @@ void GetCategories(int client, Store_GetItemsCallback callback = INVALID_FUNCTIO
 	{
 		Handle hPack = CreateDataPack();
 		WritePackFunction(hPack, callback);
-		WritePackCell(hPack, _:plugin);
-		WritePackCell(hPack, _:data);
+		WritePackCell(hPack, plugin);
+		WritePackCell(hPack, data);
 		
 		char sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), sQuery_GetCategories, sPriority);
@@ -487,10 +509,10 @@ void GetItems(int client, Handle filter = null, Store_GetItemsCallback callback 
 	else
 	{
 		Handle hPack = CreateDataPack();
-		WritePackCell(hPack, _:filter);
+		WritePackCell(hPack, filter);
 		WritePackFunction(hPack, callback);
-		WritePackCell(hPack, _:plugin);
-		WritePackCell(hPack, _:data);
+		WritePackCell(hPack, plugin);
+		WritePackCell(hPack, data);
 		
 		char sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), sQuery_GetItems, sPriority);
@@ -549,15 +571,15 @@ public void SQLCall_RetrieveItems(Handle owner, Handle hndl, const char[] error,
 			Store_CallItemAttrsCallback(g_items[g_itemCount][ItemType], g_items[g_itemCount][ItemName], attrs);
 		}
 
-		g_items[g_itemCount][ItemIsBuyable] = bool:SQL_FetchInt(hndl, 11);
-		g_items[g_itemCount][ItemIsTradeable] = bool:SQL_FetchInt(hndl, 12);
-		g_items[g_itemCount][ItemIsRefundable] = bool:SQL_FetchInt(hndl, 13);
+		g_items[g_itemCount][ItemIsBuyable] = view_as<bool>SQL_FetchInt(hndl, 11);
+		g_items[g_itemCount][ItemIsTradeable] = view_as<bool>SQL_FetchInt(hndl, 12);
+		g_items[g_itemCount][ItemIsRefundable] = view_as<bool>SQL_FetchInt(hndl, 13);
 
 		char flags[11];
 		SQL_FetchString(hndl, 14, flags, sizeof(flags));
 		g_items[g_itemCount][ItemFlags] = ReadFlagString(flags);
 		
-		g_items[g_itemCount][ItemDisableServerRestriction] = bool:SQL_FetchInt(hndl, 15);
+		g_items[g_itemCount][ItemDisableServerRestriction] = view_as<bool>SQL_FetchInt(hndl, 15);
 				
 		g_itemCount++;
 	}
@@ -638,8 +660,8 @@ void GetItemAttributes(const char[] itemName, Store_ItemGetAttributesCallback ca
 	Handle hPack = CreateDataPack();
 	WritePackString(hPack, itemName);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	int itemNameLength = 2 * strlen(itemName) + 1;
 
@@ -694,8 +716,8 @@ void WriteItemAttributes(const char[] itemName, const char[] attrs, Store_BuyIte
 {
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	int itemNameLength = 2 * strlen(itemName) + 1;
 	char[] itemNameSafe = new char[itemNameLength];
@@ -777,10 +799,10 @@ void GetLoadouts(Handle filter, Store_GetItemsCallback callback = INVALID_FUNCTI
 	else
 	{
 		Handle hPack = CreateDataPack();
-		WritePackCell(hPack, _:filter);
+		WritePackCell(hPack, filter);
 		WritePackFunction(hPack, callback);
-		WritePackCell(hPack, _:plugin);
-		WritePackCell(hPack, _:data);
+		WritePackCell(hPack, plugin);
+		WritePackCell(hPack, data);
 				
 		char sQuery[MAX_QUERY_SIZES];
 		Format(sQuery, sizeof(sQuery), sQuery_GetLoadouts);
@@ -844,8 +866,8 @@ void GetClientLoadouts(int accountId, Store_GetUserLoadoutsCallback callback, Ha
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 	
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_GetClientLoadouts, accountId);
@@ -885,7 +907,7 @@ public void SQLCall_GetClientLoadouts(Handle owner, Handle hndl, const char[] er
 	Call_PushCell(accountId);
 	Call_PushArray(ids, count);
 	Call_PushCell(count);
-	Call_PushCell(_:arg);
+	Call_PushCell(arg);
 	Call_Finish();
 }
 
@@ -893,12 +915,12 @@ public void SQLCall_GetClientLoadouts(Handle owner, Handle hndl, const char[] er
 void GetUserItems(Handle filter, int accountId, int loadoutId, Store_GetUserItemsCallback callback, Handle plugin = null, any data = 0)
 {
 	Handle hPack = CreateDataPack();
-	WritePackCell(hPack, _:filter);
+	WritePackCell(hPack, filter);
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, loadoutId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 	
 	if (g_itemCount == -1)
 	{
@@ -953,7 +975,7 @@ void GetUserItems(Handle filter, int accountId, int loadoutId, Store_GetUserItem
 }
 
 //Function - Resets a data pack for usage.
-public ReloadUserItems(int[] ids, int count, any hPack)
+public void ReloadUserItems(int[] ids, int count, any hPack)
 {
 	ResetPack(hPack);
 
@@ -1011,7 +1033,7 @@ public void SQLCall_GetUserItems(Handle owner, Handle hndl, const char[] error, 
 	Call_PushArray(itemCount, count);
 	Call_PushCell(count);
 	Call_PushCell(loadoutId);
-	Call_PushCell(_:arg);
+	Call_PushCell(arg);
 	Call_Finish();
 }
 
@@ -1020,8 +1042,8 @@ void GetUserItemsCount(int accountId, const char[] itemName, Store_GetUserItemsC
 {
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	int itemNameLength = 2 * strlen(itemName) + 1;
 	
@@ -1054,7 +1076,7 @@ public void SQLCall_GetUserItemsCount(Handle owner, Handle hndl, const char[] er
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(SQL_FetchInt(hndl, 0));
-		Call_PushCell(_:arg);
+		Call_PushCell(arg);
 		Call_Finish();
 	}
 }
@@ -1064,8 +1086,8 @@ void GetCredits(int accountId, Store_GetCreditsCallback callback, Handle plugin 
 {
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 	
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_GetCredits, accountId);
@@ -1093,7 +1115,7 @@ public void SQLCall_GetCredits(Handle owner, Handle hndl, const char[] error, an
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(SQL_FetchInt(hndl, 0));
-		Call_PushCell(_:arg);
+		Call_PushCell(arg);
 		Call_Finish();
 	}
 }
@@ -1105,14 +1127,14 @@ void BuyItem(int accountId, int itemId, Store_BuyItemCallback callback, Handle p
 	WritePackCell(hPack, itemId);
 	WritePackCell(hPack, accountId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	GetCredits(accountId, OnGetCreditsForItemBuy, _, hPack);
 }
 
 //Callback - callback to purchase an item for a client.
-public OnGetCreditsForItemBuy(int credits, any hPack)
+public void OnGetCreditsForItemBuy(int credits, any hPack)
 {
 	ResetPack(hPack);
 
@@ -1126,7 +1148,7 @@ public OnGetCreditsForItemBuy(int credits, any hPack)
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(0);
-		Call_PushCell(_:arg);
+		Call_PushCell(arg);
 		Call_Finish();
 
 		return;
@@ -1136,7 +1158,7 @@ public OnGetCreditsForItemBuy(int credits, any hPack)
 }
 
 //Callback - On item purchase, remove credits from client and give them the item.
-public OnBuyItemGiveItem(int accountId, int credits, bool bNegative, any hPack)
+public void OnBuyItemGiveItem(int accountId, int credits, bool bNegative, any hPack)
 {
 	ResetPack(hPack);
 
@@ -1145,7 +1167,7 @@ public OnBuyItemGiveItem(int accountId, int credits, bool bNegative, any hPack)
 }
 
 //Callback - On credits removed, give item.
-public OnGiveItemFromBuyItem(int accountId, any hPack)
+public void OnGiveItemFromBuyItem(int accountId, any hPack)
 {
 	ResetPack(hPack);
 	ReadPackCell(hPack);
@@ -1159,7 +1181,7 @@ public OnGiveItemFromBuyItem(int accountId, any hPack)
 
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(1);
-	Call_PushCell(_:arg);
+	Call_PushCell(arg);
 	Call_Finish();
 }
 
@@ -1170,14 +1192,14 @@ void RemoveUserItem(int accountId, int itemId, Store_UseItemCallback callback, H
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, itemId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	UnequipItem(accountId, itemId, -1, OnRemoveUserItem, _, hPack);
 }
 
 //Callback - Remove client item from database.
-public OnRemoveUserItem(int accountId, int itemId, int loadoutId, any hPack)
+public void OnRemoveUserItem(int accountId, int itemId, int loadoutId, any hPack)
 {
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_RemoveUserItem, itemId, accountId);
@@ -1206,7 +1228,7 @@ public void SQLCall_RemoveUserItem(Handle owner, Handle hndl, const char[] error
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(accountId);
 	Call_PushCell(itemId);
-	Call_PushCell(_:arg);
+	Call_PushCell(arg);
 	Call_Finish();
 }
 
@@ -1228,14 +1250,14 @@ void EquipItem(int accountId, int itemId, int loadoutId, Store_EquipItemCallback
 	WritePackCell(hPack, itemId);
 	WritePackCell(hPack, loadoutId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	UnequipItem(accountId, itemId, loadoutId, OnUnequipItemToEquipNewItem, _, hPack);
 }
 
 //Callback - unequip an item for a client to equip a new one.
-public OnUnequipItemToEquipNewItem(int accountId, int itemId, int loadoutId, any hPack)
+public void OnUnequipItemToEquipNewItem(int accountId, int itemId, int loadoutId, any hPack)
 {
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_EquipUnequipItem, loadoutId, accountId, itemId);
@@ -1266,7 +1288,7 @@ public void SQLCall_EquipItem(Handle owner, Handle hndl, const char[] error, any
 	Call_PushCell(accountId);
 	Call_PushCell(itemId);
 	Call_PushCell(loadoutId);
-	Call_PushCell(_:arg);
+	Call_PushCell(arg);
 	Call_Finish();
 }
 
@@ -1278,8 +1300,8 @@ void UnequipItem(int accountId, int itemId, int loadoutId, Store_EquipItemCallba
 	WritePackCell(hPack, itemId);
 	WritePackCell(hPack, loadoutId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_UnequipItem, accountId, itemId);
@@ -1316,7 +1338,7 @@ public void SQLCall_UnequipItem(Handle owner, Handle hndl, const char[] error, a
 	Call_PushCell(accountId);
 	Call_PushCell(itemId);
 	Call_PushCell(loadoutId);
-	Call_PushCell(_:arg);
+	Call_PushCell(arg);
 	Call_Finish();
 }
 
@@ -1325,8 +1347,8 @@ void GetEquippedItemsByType(int accountId, const char[] type, int loadoutId, Sto
 {
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 		
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_GetEquippedItemsByType, accountId, type, loadoutId);
@@ -1374,8 +1396,8 @@ void GiveCredits(int accountId, int credits, Store_GiveCreditsCallback callback,
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, credits);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 	
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_GiveCredits, credits, accountId);
@@ -1406,7 +1428,7 @@ public void SQLCall_GiveCredits(Handle owner, Handle hndl, const char[] error, a
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
 		Call_PushCell(credits);
-		Call_PushCell(_:arg);
+		Call_PushCell(arg);
 		Call_Finish();
 	}
 }
@@ -1418,8 +1440,8 @@ void RemoveCredits(int accountId, int credits, Store_RemoveCreditsCallback callb
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, credits);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 	
 	Store_LogDebug("Native - RemoveCredits - accountId = %d, credits = %d", accountId, credits);
 	
@@ -1469,7 +1491,7 @@ public void SQLCall_RemoveCredits(Handle owner, Handle hndl, const char[] error,
 		Call_PushCell(accountId);
 		Call_PushCell(credits);
 		Call_PushCell(bIsNegative);
-		Call_PushCell(_:arg);
+		Call_PushCell(arg);
 		Call_Finish();
 	}
 }
@@ -1480,8 +1502,8 @@ void GiveItem(int accountId, int itemId, Store_AcquireMethod acquireMethod = Sto
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackFunction(hPack, callback);
-	WritePackCell(hPack, _:plugin);
-	WritePackCell(hPack, _:data);
+	WritePackCell(hPack, plugin);
+	WritePackCell(hPack, data);
 
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_GiveItem, itemId);
@@ -1522,7 +1544,7 @@ public void SQLCall_GiveItem(Handle owner, Handle hndl, const char[] error, any 
 	{
 		Call_StartFunction(plugin, callback);
 		Call_PushCell(accountId);
-		Call_PushCell(_:arg);
+		Call_PushCell(arg);
 		Call_Finish();
 	}
 }
@@ -1764,13 +1786,13 @@ void Store_Local_TQuery(const char[] sQueryName, SQLTCallback callback, const ch
 //Natives
 
 //Native - Reload all cache stacks.
-public int Native_ReloadCacheStacks(Handle plugin, numParams)
+public int Native_ReloadCacheStacks(Handle plugin, int numParams)
 {
 	ReloadCacheStacks(-1);
 }
 
 //Native - Register a new plugin module for web panel version control.
-public int Native_RegisterPluginModule(Handle plugin, numParams)
+public int Native_RegisterPluginModule(Handle plugin, int numParams)
 {
 	int ServerID = Store_GetServerID();
 	
@@ -1819,13 +1841,13 @@ public void SQLCall_RegisterPluginModule(Handle owner, Handle hndl, const char[]
 }
 
 //Native - Pushes the base URL set to other plugins for them to use. ( Example: "http://www.domain.com/store/" )
-public int Native_GetStoreBaseURL(Handle plugin, numParams)
+public int Native_GetStoreBaseURL(Handle plugin, int numParams)
 {
 	SetNativeString(1, g_baseURL, GetNativeCell(2));
 }
 
 //Native - Registers a client with a name specified.
-public Native_Register(Handle plugin, numParams)
+public int Native_Register(Handle plugin, int numParams)
 {
 	char name[MAX_NAME_LENGTH];
 	GetNativeString(2, name, sizeof(name));
@@ -1834,13 +1856,13 @@ public Native_Register(Handle plugin, numParams)
 }
 
 //Native - Registers a client and handles the name.
-public int Native_RegisterClient(Handle plugin, numParams)
+public int Native_RegisterClient(Handle plugin, int numParams)
 {
 	RegisterClient(GetNativeCell(1), GetNativeCell(2));
 }
 
 //Native - Gets a clients account ID. (Not needed but used for backwards compatibility purposes)
-public int Native_GetClientAccountID(Handle plugin, numParams)
+public int Native_GetClientAccountID(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	int AccountID = GetSteamAccountID(client);
@@ -1854,7 +1876,7 @@ public int Native_GetClientAccountID(Handle plugin, numParams)
 }
 
 //Native - Gets a clients UserID from database.
-public int Native_GetClientUserID(Handle plugin, numParams)
+public int Native_GetClientUserID(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	
@@ -1883,7 +1905,7 @@ public int Native_GetClientUserID(Handle plugin, numParams)
 }
 
 //Native - Gets categories for other plugins to use.
-public int Native_GetCategories(Handle plugin, numParams)
+public int Native_GetCategories(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -1902,37 +1924,37 @@ public int Native_GetCategories(Handle plugin, numParams)
 }
 
 //Native - Gets a categories display name.
-public int Native_GetCategoryDisplayName(Handle plugin, numParams)
+public int Native_GetCategoryDisplayName(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_categories[GetCategoryIndex(GetNativeCell(1))][CategoryDisplayName], GetNativeCell(3));
 }
 
 //Native - Gets a categories description.
-public int Native_GetCategoryDescription(Handle plugin, numParams)
+public int Native_GetCategoryDescription(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_categories[GetCategoryIndex(GetNativeCell(1))][CategoryDescription], GetNativeCell(3));
 }
 
 //Native - Gets a categories required plugin.
-public int Native_GetCategoryPluginRequired(Handle plugin, numParams)
+public int Native_GetCategoryPluginRequired(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_categories[GetCategoryIndex(GetNativeCell(1))][CategoryRequirePlugin], GetNativeCell(3));
 }
 
 //Native - Gets a categories server restriction.
-public int Native_GetCategoryServerRestriction(Handle plugin, numParams)
+public int Native_GetCategoryServerRestriction(Handle plugin, int numParams)
 {
 	return g_categories[GetCategoryIndex(GetNativeCell(1))][CategoryDisableServerRestriction];
 }
 
 //Native - Gets a categories priority.
-public int Native_GetCategoryPriority(Handle plugin, numParams)
+public int Native_GetCategoryPriority(Handle plugin, int numParams)
 {
 	return g_categories[GetCategoryIndex(GetNativeCell(1))][CategoryPriority];
 }
 
 //Native - Gets items for other plugins to use.
-public int Native_GetItems(Handle plugin, numParams)
+public int Native_GetItems(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -1951,79 +1973,79 @@ public int Native_GetItems(Handle plugin, numParams)
 }
 
 //Native - Gets an items name.
-public int Native_GetItemName(Handle plugin, numParams)
+public int Native_GetItemName(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_items[GetItemIndex(GetNativeCell(1))][ItemName], GetNativeCell(3));
 }
 
 //Native - Gets an items display name.
-public int Native_GetItemDisplayName(Handle plugin, numParams)
+public int Native_GetItemDisplayName(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_items[GetItemIndex(GetNativeCell(1))][ItemDisplayName], GetNativeCell(3));
 }
 
 //Native - Gets an items description.
-public int Native_GetItemDescription(Handle plugin, numParams)
+public int Native_GetItemDescription(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_items[GetItemIndex(GetNativeCell(1))][ItemDescription], GetNativeCell(3));
 }
 
 //Native - Gets an items type.
-public int Native_GetItemType(Handle plugin, numParams)
+public int Native_GetItemType(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_items[GetItemIndex(GetNativeCell(1))][ItemType], GetNativeCell(3));
 }
 
 //Native - Gets an items loadout slot.
-public int Native_GetItemLoadoutSlot(Handle plugin, numParams)
+public int Native_GetItemLoadoutSlot(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_items[GetItemIndex(GetNativeCell(1))][ItemLoadoutSlot], GetNativeCell(3));
 }
 
 //Native - Gets an items price.
-public int Native_GetItemPrice(Handle plugin, numParams)
+public int Native_GetItemPrice(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemPrice];
 }
 
 //Native - Gets an items category.
-public int Native_GetItemCategory(Handle plugin, numParams)
+public int Native_GetItemCategory(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemCategoryId];
 }
 
 //Native - Gets an items priority.
-public int Native_GetItemPriority(Handle plugin, numParams)
+public int Native_GetItemPriority(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemPriority];
 }
 
 //Native - Gets an items server restrictions.
-public int Native_GetItemServerRestriction(Handle plugin, numParams)
+public int Native_GetItemServerRestriction(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemDisableServerRestriction];
 }
 
 //Native - Is an item buyable.
-public int Native_IsItemBuyable(Handle plugin, numParams)
+public int Native_IsItemBuyable(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemIsBuyable];
 }
 
 //Native - Is an item Tradeable.
-public int Native_IsItemTradeable(Handle plugin, numParams)
+public int Native_IsItemTradeable(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemIsTradeable];
 }
 
 //Native - Is an item Refundable.
-public int Native_IsItemRefundable(Handle plugin, numParams)
+public int Native_IsItemRefundable(Handle plugin, int numParams)
 {
 	return g_items[GetItemIndex(GetNativeCell(1))][ItemIsRefundable];
 }
 
 //Native - Gets an items attributes.
-public int Native_GetItemAttributes(Handle plugin, numParams)
+public int Native_GetItemAttributes(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2039,7 +2061,7 @@ public int Native_GetItemAttributes(Handle plugin, numParams)
 }
 
 //Native - Writes an items attributes.
-public int Native_WriteItemAttributes(Handle plugin, numParams)
+public int Native_WriteItemAttributes(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2061,7 +2083,7 @@ public int Native_WriteItemAttributes(Handle plugin, numParams)
 }
 
 //Native - Gets loadouts for other plugins to use.
-public int Native_GetLoadouts(Handle plugin, numParams)
+public int Native_GetLoadouts(Handle plugin, int numParams)
 {
 	any data = 0;
 	
@@ -2074,31 +2096,31 @@ public int Native_GetLoadouts(Handle plugin, numParams)
 }
 
 //Native - Gets a loadouts display name.
-public int Native_GetLoadoutDisplayName(Handle plugin, numParams)
+public int Native_GetLoadoutDisplayName(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_loadouts[GetLoadoutIndex(GetNativeCell(1))][LoadoutDisplayName], GetNativeCell(3));
 }
 
 //Native - Gets a loadouts required game.
-public int Native_GetLoadoutGame(Handle plugin, numParams)
+public int Native_GetLoadoutGame(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_loadouts[GetLoadoutIndex(GetNativeCell(1))][LoadoutGame], GetNativeCell(3));
 }
 
 //Native - Gets a loadouts required class.
-public int Native_GetLoadoutClass(Handle plugin, numParams)
+public int Native_GetLoadoutClass(Handle plugin, int numParams)
 {
 	SetNativeString(2, g_loadouts[GetLoadoutIndex(GetNativeCell(1))][LoadoutClass], GetNativeCell(3));
 }
 
 //Native - Gets a loadouts required team.
-public int Native_GetLoadoutTeam(Handle plugin, numParams)
+public int Native_GetLoadoutTeam(Handle plugin, int numParams)
 {
 	return g_loadouts[GetLoadoutIndex(GetNativeCell(1))][LoadoutTeam];
 }
 
 //Native - Gets a clients loadouts.
-public int Native_GetClientLoadouts(Handle plugin, numParams)
+public int Native_GetClientLoadouts(Handle plugin, int numParams)
 {
 	any data = 0;
 	
@@ -2111,7 +2133,7 @@ public int Native_GetClientLoadouts(Handle plugin, numParams)
 }
 
 //Native - Gets a users items for other plugins to use.
-public int Native_GetUserItems(Handle plugin, numParams)
+public int Native_GetUserItems(Handle plugin, int numParams)
 {
 	any data = 0;
 	
@@ -2124,7 +2146,7 @@ public int Native_GetUserItems(Handle plugin, numParams)
 }
 
 //Native - Gets a users items count for other plugins to use.
-public Native_GetUserItemsCount(Handle plugin, numParams)
+public int Native_GetUserItemsCount(Handle plugin, int numParams)
 {
 	any data = 0;
 	
@@ -2140,7 +2162,7 @@ public Native_GetUserItemsCount(Handle plugin, numParams)
 }
 
 //Native - Gets a clients credits.
-public Native_GetCredits(Handle plugin, numParams)
+public int Native_GetCredits(Handle plugin, int numParams)
 {
 	any data = 0;
 	
@@ -2153,7 +2175,7 @@ public Native_GetCredits(Handle plugin, numParams)
 }
 
 //Native - Gets a clients credits live.
-public int Native_GetCreditsEx(Handle plugin, params)
+public int Native_GetCreditsEx(Handle plugin, int numParams)
 {	
 	char sQuery[MAX_QUERY_SIZES];
 	Format(sQuery, sizeof(sQuery), sQuery_GetCreditsEx, GetNativeCell(1));
@@ -2180,7 +2202,7 @@ public int Native_GetCreditsEx(Handle plugin, params)
 }
 
 //Native - Buys an item for a client.
-public int Native_BuyItem(Handle plugin, numParams)
+public int Native_BuyItem(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2193,7 +2215,7 @@ public int Native_BuyItem(Handle plugin, numParams)
 }
 
 //Native - Removes an item from a client.
-public int Native_RemoveUserItem(Handle plugin, numParams)
+public int Native_RemoveUserItem(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2206,7 +2228,7 @@ public int Native_RemoveUserItem(Handle plugin, numParams)
 }
 
 //Native - Sets an items equipped state on a client.
-public int Native_SetItemEquippedState(Handle plugin, numParams)
+public int Native_SetItemEquippedState(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2219,7 +2241,7 @@ public int Native_SetItemEquippedState(Handle plugin, numParams)
 }
 
 //Native - Gets an items equipped state on a client.
-public int Native_GetEquippedItemsByType(Handle plugin, numParams)
+public int Native_GetEquippedItemsByType(Handle plugin, int numParams)
 {
 	char type[32];
 	GetNativeString(2, type, sizeof(type));
@@ -2235,7 +2257,7 @@ public int Native_GetEquippedItemsByType(Handle plugin, numParams)
 }
 
 //Native - Gives credits to a client.
-public int Native_GiveCredits(Handle plugin, numParams)
+public int Native_GiveCredits(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2248,7 +2270,7 @@ public int Native_GiveCredits(Handle plugin, numParams)
 }
 
 //Native - Give credits to multiple clients.
-public int Native_GiveCreditsToUsers(Handle plugin, numParams)
+public int Native_GiveCreditsToUsers(Handle plugin, int numParams)
 {
 	int length = GetNativeCell(2);
 	
@@ -2259,7 +2281,7 @@ public int Native_GiveCreditsToUsers(Handle plugin, numParams)
 }
 
 //Native - Give a client an item.
-public int Native_GiveItem(Handle plugin, numParams)
+public int Native_GiveItem(Handle plugin, int numParams)
 {
 	any data = 0;
 	
@@ -2272,21 +2294,21 @@ public int Native_GiveItem(Handle plugin, numParams)
 }
 
 //Native - Give different credits to clients.
-public Native_GiveDifferentCreditsToUsers(Handle:plugin, params)
+public int Native_GiveDifferentCreditsToUsers(Handle plugin, int params)
 {
-	new length = GetNativeCell(2);
+	int length = GetNativeCell(2);
 
-	new accountIds[length];
+	int[] accountIds = new int[length];
 	GetNativeArray(1, accountIds, length);
 
-	new credits[length];
+	int[] credits = new int[length];
 	GetNativeArray(3, credits, length);
 
 	GiveDifferentCreditsToUsers(accountIds, length, credits);
 }
 
 //Native - Remove credits from a client.
-public int Native_RemoveCredits(Handle plugin, numParams)
+public int Native_RemoveCredits(Handle plugin, int numParams)
 {
 	any data = 0;
 
@@ -2299,7 +2321,7 @@ public int Native_RemoveCredits(Handle plugin, numParams)
 }
 
 //Native - Remove credits from multiple clients.
-public int Native_RemoveCreditsFromUsers(Handle plugin, numParams)
+public int Native_RemoveCreditsFromUsers(Handle plugin, int numParams)
 {
 	int length = GetNativeCell(2);
 
@@ -2310,7 +2332,7 @@ public int Native_RemoveCreditsFromUsers(Handle plugin, numParams)
 }
 
 //Natives - Remove different credits from clients.
-public int Native_RemoveDifferentCreditsFromUsers(Handle plugin, numParams)
+public int Native_RemoveDifferentCreditsFromUsers(Handle plugin, int numParams)
 {
 	int length = GetNativeCell(2);
 
@@ -2324,7 +2346,7 @@ public int Native_RemoveDifferentCreditsFromUsers(Handle plugin, numParams)
 }
 
 //Native - Allows modules to query the store database.
-public int Native_SQLTQuery(Handle plugin, numParams)
+public int Native_SQLTQuery(Handle plugin, int numParams)
 {
 	SQLTCallback callback = view_as<SQLTCallback>GetNativeFunction(1);
 	
@@ -2338,7 +2360,7 @@ public int Native_SQLTQuery(Handle plugin, numParams)
 	DBPriority prio = view_as<DBPriority>GetNativeCell(4);
 	
 	Handle hPack = CreateDataPack();
-	WritePackCell(hPack, _:plugin);
+	WritePackCell(hPack, plugin);
 	WritePackFunction(hPack, callback);
 	WritePackCell(hPack, data);
 	
@@ -2365,7 +2387,7 @@ public void Query_Callback(Handle owner, Handle hndl, const char[] error, any da
 }
 
 //Native - Escapes a string with the SQL database.
-public int Native_SQLEscapeString(Handle plugin, numParams)
+public int Native_SQLEscapeString(Handle plugin, int numParams)
 {
 	int size;
 	GetNativeStringLength(1, size);
@@ -2381,7 +2403,7 @@ public int Native_SQLEscapeString(Handle plugin, numParams)
 }
 
 //Native - Processes a category to make sure it should be shown with the ServerID set.
-public int Native_ProcessCategory(Handle plugin, numParams)
+public int Native_ProcessCategory(Handle plugin, int numParams)
 {
 	int ServerID = GetNativeCell(1);
 	int CategoryID = GetNativeCell(2);
@@ -2406,7 +2428,7 @@ public int Native_ProcessCategory(Handle plugin, numParams)
 }
 
 //Native - Processes an item to make sure it should be shown with the ServerID set.
-public int Native_ProcessItem(Handle plugin, numParams)
+public int Native_ProcessItem(Handle plugin, int numParams)
 {
 	int ServerID = GetNativeCell(1);
 	int ItemID = GetNativeCell(2);

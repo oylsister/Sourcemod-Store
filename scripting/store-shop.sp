@@ -3,6 +3,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Shop Module"
 #define PLUGIN_DESCRIPTION "Shop module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_shop_version"
@@ -411,7 +414,7 @@ void DoBuyItem(int client, int itemId, bool confirmed = false, bool checkeddupes
 		Call_StartForward(g_buyItemForward);
 		Call_PushCell(client);
 		Call_PushCell(itemId);
-		Call_Finish(_:result);
+		Call_Finish(result);
 
 		if (result == Plugin_Handled || result == Plugin_Stop)
 		{
@@ -581,17 +584,17 @@ public int EquipAfterPurchaseMenuHandle(Handle menu, MenuAction action, int clie
 	}
 }
 
-public EquipItemCallback(accountId, itemId, loadoutId, any:data)
+public void EquipItemCallback(int accountId, int itemId, int loadoutId, any data)
 {
 	
 }
 
-public Native_OpenShop(Handle:plugin, params)
+public int Native_OpenShop(Handle plugin, int params)
 {
 	OpenShop(GetNativeCell(1));
 }
 
-public Native_OpenShopCategory(Handle:plugin, params)
+public int Native_OpenShopCategory(Handle plugin, int params)
 {
 	OpenShopCategory(GetNativeCell(1), GetNativeCell(2));
 }

@@ -3,6 +3,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Core Module"
 #define PLUGIN_DESCRIPTION "Core module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_core_version"
@@ -261,7 +264,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 			Call_PushCell(client);
 			Call_PushString(cmds[0]);
 			Call_PushString(cmds[1]);
-			Call_Finish(_:result);
+			Call_Finish(result);
 
 			if (result == Plugin_Handled || result == Plugin_Stop)
 			{
@@ -556,7 +559,7 @@ public int Native_AddMainMenuItem(Handle plugin, int params)
 	char value[64];
 	GetNativeString(3, value, sizeof(value));
 
-	AddMainMenuItem(true, displayName, description, value, plugin, Store_MenuItemClickCallback:GetNativeFunction(4), GetNativeCell(5));
+	AddMainMenuItem(true, displayName, description, value, plugin, view_as<Store_MenuItemClickCallback>GetNativeFunction(4), GetNativeCell(5));
 }
 
 public int Native_AddMainMenuItemEx(Handle plugin, int params)
@@ -570,7 +573,7 @@ public int Native_AddMainMenuItemEx(Handle plugin, int params)
 	char value[64];
 	GetNativeString(3, value, sizeof(value));
 
-	AddMainMenuItem(false, displayName, description, value, plugin, Store_MenuItemClickCallback:GetNativeFunction(4), GetNativeCell(5));
+	AddMainMenuItem(false, displayName, description, value, plugin, view_as<Store_MenuItemClickCallback>GetNativeFunction(4), GetNativeCell(5));
 }
 
 public int Native_GetCurrencyName(Handle plugin, int params)
@@ -633,7 +636,7 @@ public int Native_RegisterChatCommands(Handle plugin, int params)
 	char command[32];
 	GetNativeString(1, command, sizeof(command));
 
-	return RegisterCommands(plugin, command, Store_ChatCommandCallback:GetNativeFunction(2));
+	return RegisterCommands(plugin, command, view_as<Store_ChatCommandCallback>GetNativeFunction(2));
 }
 
 public int Native_GetServerID(Handle plugin, int params)

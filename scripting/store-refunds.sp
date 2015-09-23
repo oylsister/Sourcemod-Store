@@ -3,6 +3,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Refunds Module"
 #define PLUGIN_DESCRIPTION "Refunds module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_refunds_version"

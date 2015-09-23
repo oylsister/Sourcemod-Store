@@ -3,6 +3,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Distributor Module"
 #define PLUGIN_DESCRIPTION "Distributor module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_distributor_version"
@@ -191,7 +194,7 @@ bool HasPermission(int client, int flags)
 		{
 			count++;
 
-			if (GetAdminFlag(admin, AdminFlag:i))
+			if (GetAdminFlag(admin, view_as<AdminFlag>i))
 			{
 				found++;
 			}

@@ -8,6 +8,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Logging Module"
 #define PLUGIN_DESCRIPTION "Logging module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_logging_version"
@@ -140,7 +143,7 @@ void LoadConfig()
 	CloseHandle(hKV);
 }
 
-public int Native_Store_Log(Handle hPlugin, iParams) 
+public int Native_Store_Log(Handle hPlugin, int iParams) 
 {
 	if (!bLog_Default) return;
 	
@@ -153,7 +156,7 @@ public int Native_Store_Log(Handle hPlugin, iParams)
 	Log_File(sLoggingPath, sLoggingFilename, sDate, DEFAULT, bFolder_Default, sFormat);
 }
 
-public int Native_Store_LogTrace(Handle hPlugin, iParams) 
+public int Native_Store_LogTrace(Handle hPlugin, int iParams) 
 {
 	if (!bLog_Trace) return;
 	
@@ -166,7 +169,7 @@ public int Native_Store_LogTrace(Handle hPlugin, iParams)
 	Log_File(sLoggingPath, sLoggingFilename, sDate, TRACE, bFolder_Trace, sFormat);
 }
 
-public int Native_Store_LogDebug(Handle hPlugin, iParams) 
+public int Native_Store_LogDebug(Handle hPlugin, int iParams) 
 {
 	if (!bLog_Debug) return;
 	
@@ -179,7 +182,7 @@ public int Native_Store_LogDebug(Handle hPlugin, iParams)
 	Log_File(sLoggingPath, sLoggingFilename, sDate, DEBUG, bFolder_Debug, sFormat);
 }
 
-public int Native_Store_LogInfo(Handle hPlugin, iParams) 
+public int Native_Store_LogInfo(Handle hPlugin, int iParams) 
 {
 	if (!bLog_Info) return;
 	
@@ -192,7 +195,7 @@ public int Native_Store_LogInfo(Handle hPlugin, iParams)
 	Log_File(sLoggingPath, sLoggingFilename, sDate, INFO, bFolder_Info, sFormat);
 }
 
-public int Native_Store_LogWarning(Handle hPlugin, iParams) 
+public int Native_Store_LogWarning(Handle hPlugin, int iParams) 
 {
 	if (!bLog_Warn) return;
 	
@@ -205,7 +208,7 @@ public int Native_Store_LogWarning(Handle hPlugin, iParams)
 	Log_File(sLoggingPath, sLoggingFilename, sDate, WARN, bFolder_Warn, sFormat);
 }
 
-public int Native_Store_LogError(Handle hPlugin, iParams) 
+public int Native_Store_LogError(Handle hPlugin, int iParams) 
 {
 	if (!bLog_Error) return;
 	

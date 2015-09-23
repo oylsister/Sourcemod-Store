@@ -8,6 +8,9 @@
 #include <adminmenu>
 #include <smartdm>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Gifting Module"
 #define PLUGIN_DESCRIPTION "Gifting module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_gifting_version"
@@ -531,7 +534,7 @@ void OpenSelectCreditsMenu(int client, GiftAction giftAction, int giftTo = -1)
 		IntToString(g_creditChoices[choice], text, sizeof(text));
 
 		char value[32];
-		Format(value, sizeof(value), "%d,%d,%d", _:giftAction, giftTo, g_creditChoices[choice]);
+		Format(value, sizeof(value), "%d,%d,%d", giftAction, giftTo, g_creditChoices[choice]);
 
 		AddMenuItem(menu, value, text);
 	}
@@ -552,7 +555,7 @@ public int CreditsMenuSelectItem(Handle menu, MenuAction action, int client, int
 			char values[3][16];
 			ExplodeString(sMenuItem, ",", values, sizeof(values), sizeof(values[]));
 				
-			int giftAction = _:StringToInt(values[0]);
+			int giftAction = StringToInt(values[0]);
 			int giftTo = StringToInt(values[1]);
 			int credits = StringToInt(values[2]);
 			
@@ -609,12 +612,12 @@ void OpenGiveCreditsConfirmMenu(int client, GiftAction giftAction, int giftTo, i
 			GetClientName(giftTo, sName, sizeof(sName));
 			
 			SetMenuTitle(menu, "%T", "Gift Credit Confirmation", client, sName, credits, g_currencyName);
-			Format(sItem, sizeof(sItem), "%d,%d,%d", _:giftAction, giftTo, credits);
+			Format(sItem, sizeof(sItem), "%d,%d,%d", giftAction, giftTo, credits);
 		}
 	case GiftAction_Drop:
 		{
 			SetMenuTitle(menu, "%T", "Drop Credit Confirmation", client, credits, g_currencyName);
-			Format(sItem, sizeof(sItem), "%d,%d,%d", _:giftAction, giftTo, credits);
+			Format(sItem, sizeof(sItem), "%d,%d,%d", giftAction, giftTo, credits);
 		}
 	}
 
@@ -683,7 +686,7 @@ void OpenSelectItemMenu(int client, GiftAction giftAction, int giftTo = -1)
 {
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, GetClientUserId(client));
-	WritePackCell(hPack, _:giftAction);
+	WritePackCell(hPack, giftAction);
 	WritePackCell(hPack, giftTo);
 
 	Handle filter = CreateTrie();
@@ -738,7 +741,7 @@ public void GetUserItemsCallback(int[] ids, bool[] equipped, int[] itemCount, in
 		}
 		
 		char sItem[32];
-		Format(sItem, sizeof(sItem), "%d,%d,%d", _:giftAction, giftTo, ids[item]);
+		Format(sItem, sizeof(sItem), "%d,%d,%d", giftAction, giftTo, ids[item]);
 		
 		AddMenuItem(menu, sItem, sDisplay);    
 	}

@@ -19,6 +19,6 @@
 
 #define STORE_AUTHORS "Alongub, Keith Warren(Drixevel), Arrow768"
 #define STORE_URL "https://github.com/SourceMod-Store/store"
-#define STORE_VERSION "1.2.5b"
+#define STORE_VERSION "1.2 Final"
 
 #define STORE_PREFIX "\x04[Store] \x01"

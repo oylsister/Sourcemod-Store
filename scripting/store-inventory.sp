@@ -3,6 +3,9 @@
 #include <sourcemod>
 #include <store>
 
+//New Syntax
+#pragma newdecls required
+
 #define PLUGIN_NAME "[Store] Inventory Module"
 #define PLUGIN_DESCRIPTION "Inventory module for the Sourcemod Store."
 #define PLUGIN_VERSION_CONVAR "store_inventory_version"
@@ -683,7 +686,7 @@ void RegisterItemType(const char[] type, Handle plugin, Store_ItemUseCallback us
 	}
 
 	Handle itemType = CreateDataPack();
-	WritePackCell(itemType, _:plugin);
+	WritePackCell(itemType, plugin);
 	WritePackFunction(itemType, useCallback);
 	WritePackFunction(itemType, attrsCallback);
 	WritePackString(itemType, type);
@@ -692,24 +695,24 @@ void RegisterItemType(const char[] type, Handle plugin, Store_ItemUseCallback us
 	SetTrieValue(g_itemTypeNameIndex, type, index);
 }
 
-public int Native_OpenInventory(Handle plugin, numParams)
+public int Native_OpenInventory(Handle plugin, int numParams)
 {       
 	OpenInventory(GetNativeCell(1));
 }
 
-public int Native_OpenInventoryCategory(Handle plugin, numParams)
+public int Native_OpenInventoryCategory(Handle plugin, int numParams)
 {       
 	OpenInventoryCategory(GetNativeCell(1), GetNativeCell(2));
 }
 
-public int Native_RegisterItemType(Handle plugin, numParams)
+public int Native_RegisterItemType(Handle plugin, int numParams)
 {
 	char type[STORE_MAX_TYPE_LENGTH];
 	GetNativeString(1, type, sizeof(type));
-	RegisterItemType(type, plugin, Store_ItemUseCallback:GetNativeFunction(2), Store_ItemGetAttributesCallback:GetNativeFunction(3));
+	RegisterItemType(type, plugin, view_as<Store_ItemUseCallback>GetNativeFunction(2), view_as<Store_ItemGetAttributesCallback>GetNativeFunction(3));
 }
 
-public int Native_IsItemTypeRegistered(Handle plugin, params)
+public int Native_IsItemTypeRegistered(Handle plugin, int params)
 {
 	char type[STORE_MAX_TYPE_LENGTH];
 	GetNativeString(1, type, sizeof(type));
@@ -718,7 +721,7 @@ public int Native_IsItemTypeRegistered(Handle plugin, params)
 	return GetTrieValue(g_itemTypeNameIndex, type, typeIndex);
 }
 
-public int Native_CallItemAttrsCallback(Handle plugin, params)
+public int Native_CallItemAttrsCallback(Handle plugin, int params)
 {
 	if (g_itemTypeNameIndex == INVALID_HANDLE)
 	{

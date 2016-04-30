@@ -88,6 +88,7 @@ enum EngineVersion
 	Engine_Blade,				/**< Blade Symphony */
 	Engine_Insurgency,			/**< Insurgency (2013 Retail version)*/
 	Engine_Contagion,			/**< Contagion */
+	Engine_BlackMesa,			/**< Black Mesa Multiplayer */
 };
 
 enum FindMapResult
@@ -158,12 +159,31 @@ native bool:IsMapValid(const String:map[]);
  * Returns whether a full or partial map name is found or can be resolved
  * 
  * @param map 			Map name (usually same as map path relative to maps/ dir,
- *						excluding .bsp extension). If result is FindMap_FuzzyMatch
- *						or FindMap_NonCanonical, this will be updated to the full path.
+ *						excluding .bsp extension).
+ * @param foundmap		Resolved map name. If the return is FindMap_FuzzyMatch
+ *						or FindMap_NonCanonical the buffer will be the full path.
  * @param maxlen		Maximum length to write to map var.
  * @return				Result of the find operation. Not all result types are supported on all games.
  */
-native FindMapResult FindMap(char[] map, int maxlen);
+native FindMapResult FindMap(const char[] map, char[] foundmap, int maxlen);
+
+/**
+ * Get the display name of a workshop map.
+ * 
+ * Note: You do not need to call FindMap first.  This native will call FindMap internally.
+ * 
+ * @param map 			Map name (usually same as map path relative to maps/ dir,
+ *						excluding .bsp extension).
+ * @param displayName	Map's display name, i.e. cp_mymapname or de_mymapname.
+ *						If FindMap returns FindMap_PossiblyAvailable or FindMap_NotFound,
+ *						the map cannot be resolved and this native will return false,
+ *						but displayName will be a copy of map.
+ * @param maxlen		Maximum length to write to displayName var.
+ * @return				true if FindMap returns FindMap_Found, FindMap_FuzzyMatch, or
+ * 						FindMap_NonCanonical.
+ * 						false if FindMap returns FindMap_PossiblyAvailable or FindMap_NotFound.
+ */
+native bool GetMapDisplayName(const char[] map, char[] displayName, int maxlen);
 
 /**
  * Returns whether the server is dedicated.
@@ -353,7 +373,7 @@ native PrintToChat(client, const String:format[], any:...);
  */
 stock PrintToChatAll(const String:format[], any:...)
 {
-	decl String:buffer[192];
+	decl String:buffer[254];
 	
 	for (new i = 1; i <= MaxClients; i++)
 	{
@@ -386,7 +406,7 @@ native PrintCenterText(client, const String:format[], any:...);
  */
 stock PrintCenterTextAll(const String:format[], any:...)
 {
-	decl String:buffer[192];
+	decl String:buffer[254];
 
 	for (new i = 1; i <= MaxClients; i++)
 	{
@@ -419,7 +439,7 @@ native PrintHintText(client, const String:format[], any:...);
  */
 stock PrintHintTextToAll(const String:format[], any:...)
 {
-	decl String:buffer[192];
+	decl String:buffer[254];
 	
 	for (new i = 1; i <= MaxClients; i++)
 	{

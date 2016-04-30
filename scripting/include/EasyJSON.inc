@@ -842,3 +842,23 @@ stock DestroyJSONArray(&Handle:array)
 	}
 	CloseHandle(array);
 }
+
+stock JSONType:JSON_TypeOf(&Handle:object2)
+{
+	decl JSONType:m_eType;
+	GetTrieValue(object2, "type", m_eType);
+	return m_eType;
+}
+
+stock GetJSONArraySize(&Handle:array)
+{
+	decl JSONType:m_eType;
+	GetTrieValue(array, "type", m_eType);
+	
+	if(m_eType == Type_Array)
+	{
+		return GetArraySize(array);
+	}
+	
+	return -1;
+}

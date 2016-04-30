@@ -9,8 +9,6 @@ More documentation and tutorials can be found at [our wiki](https://github.com/a
 
 * Working Source-based Game Server with SourceMod installed.
 * MySQL database, with a tool such as phpMyAdmin for database management. 
-* [SDKHooks](http://forums.alliedmods.net/showthread.php?t=106748) 
-* [SMJansson](https://forums.alliedmods.net/showthread.php?t=184604)
 
 ### Features
 
@@ -20,6 +18,7 @@ More documentation and tutorials can be found at [our wiki](https://github.com/a
 * **Loadout** - Players can have multiple sets of equipped items. You can switch between the sets anytime using the loadout menu. You can have specific loadouts for different games, different in-game (TF2) classes, different in-game teams or any combination of them.
 * **Distributor** - Every X minutes, all players that are currently connected to server will get Y credits (configurable).
 * **Logging** - The plugin maintains full logs of all errors, warnings and information.
+* **Trading** - The plugin that allows clients to trade items and credits between each other.
 * Custom currency name.
 * Custom chat triggers for the store main menu, shop, inventory and loadout.
 

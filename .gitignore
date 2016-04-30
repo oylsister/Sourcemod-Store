@@ -1,15 +1,10 @@
-scripting/compiled
+addons/sourcemod/scripting/compiled
 *.zip
-
-*.sublime-project
-*.sublime-workspace
-*.sublime-build
-
 *.bat
 
-scripting/compile.exe
-scripting/compile.dat
-scripting/spcomp.exe
+addons/sourcemod/scripting/compile.exe
+addons/sourcemod/scripting/compile.dat
+addons/sourcemod/scripting/spcomp.exe
 
 ##DEFAULTS##
 

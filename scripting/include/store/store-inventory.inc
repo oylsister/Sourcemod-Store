@@ -1,14 +1,14 @@
 #if defined _store_inventory_included
-  #endinput
+#endinput
 #endif
 #define _store_inventory_included
 
 //Globals
 enum Store_ItemUseAction
 {
-	Store_EquipItem,
-	Store_UnequipItem,
-	Store_DeleteItem,
+	Store_EquipItem, 
+	Store_UnequipItem, 
+	Store_DeleteItem, 
 	Store_DoNothing
 }
 
@@ -75,24 +75,24 @@ native bool Store_IsItemTypeRegistered(const char[] type);
  */
 native bool Store_CallItemAttrsCallback(const char[] type, const char[] itemName, const char[] attrs);
 
-public SharedPlugin __pl_store_inventory =
+public SharedPlugin __pl_store_inventory = 
 {
-    name = "store-inventory",
-    file = "store-inventory.smx",
-#if defined REQUIRE_PLUGIN
-    required = 1,
-#else
-    required = 0,
-#endif
+	name = "store-inventory", 
+	file = "store-inventory.smx", 
+	#if defined REQUIRE_PLUGIN
+	required = 1, 
+	#else
+	required = 0, 
+	#endif
 };
 
 #if defined REQUIRE_PLUGIN
 public __pl_store_inventory_SetNTVOptional()
 {
-	MarkNativeAsOptional("Store_OpenInventory");  
-	MarkNativeAsOptional("Store_OpenInventoryCategory");  	
+	MarkNativeAsOptional("Store_OpenInventory");
+	MarkNativeAsOptional("Store_OpenInventoryCategory");
 	
-	MarkNativeAsOptional("Store_RegisterItemType"); 
+	MarkNativeAsOptional("Store_RegisterItemType");
 	MarkNativeAsOptional("Store_IsItemTypeRegistered");
 	
 	MarkNativeAsOptional("Store_CallItemAttrsCallback");

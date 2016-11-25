@@ -4,7 +4,7 @@
 #define _store_core_included
 
 #define STORE_AUTHORS "Alongub, Keith Warren(Drixevel), Arrow768"
-#define STORE_VERSION "2.0.0"
+#define STORE_VERSION "1.3.0 dev1"
 #define STORE_URL "https://github.com/SourceMod-Store/store"
 
 #define STORE_PREFIX "\x04[Store] \x01"
@@ -30,6 +30,7 @@ enum Store_AccessType
 
 //Defines
 #define MAX_QUERY_SIZE	2048
+#define MAX_QUERY_LENGTH 2048
 #define MAX_TOKEN_SIZE	128
 
 #define STORE_MAX_NAME_LENGTH			32
@@ -72,7 +73,7 @@ typedef Store_GetUserLoadoutsCallback = function void(int accountId, int[] ids, 
 typedef Store_GetUserEquippedLoadoutCallback = function void(int accountId, int id, any data);
 typedef Store_SaveUserEquippedLoadoutCallback = function void(int accountId, int id, any data);
 
-typeset Store_ItemGetAttributesCallback 
+typeset Store_ItemGetAttributesCallback
 {
 	function void(const char[] itemName, const char[] attrs);
 	function void(const char[] itemName, const char[] attrs, any data);
@@ -88,6 +89,9 @@ typedef Store_BuyItemCallback = function void(bool success, any data);
 typedef Store_EquipItemCallback = function void(int accountId, int itemId, int loadoutId, any data);
 typedef Store_UseItemCallback = function void(int accountId, int itemId, any data);
 typedef Store_GetUserItemsCountCallback = function void(int count, any data);
+
+typedef Store_SQL_Transaction_Success = function void(any data, int numQueries, Handle[] results, any[] queryData);
+typedef Store_SQL_Transaction_Failure = function void(any data, int numQueries, const char[] error, int failIndex, any[] queryData);
 
 ////////////////////
 //Natives
@@ -234,29 +238,29 @@ native void Store_GetClientToken(int client, char[] sToken, size);
 native void Store_GenerateNewToken(int client);
 
 /**
- * Registers a player in the database 
- * 
+ * Registers a player in the database
+ *
  * - If the player is already in the database, his name will be updated according
  *   to the 'name' parameter provided.
  *
  * - If the player is not in the database (for example, a new player who just joined
- *   the server for the first time), he will be added using the account ID and name 
+ *   the server for the first time), he will be added using the account ID and name
  *   provided.
  *
  * As with all other store-backend methods, this method is completely asynchronous.
  *
  * @param accountId			The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
  * @param name 				The name of the player.
- * @param credits 			The amount of credits to give to the player if it's his first register. 
+ * @param credits 			The amount of credits to give to the player if it's his first register.
  *
  * @noreturn
  */
 native void Store_Register(int  accountId, const char[] name = "", int credits = 0);
 
 /**
- * Registers a player in the database, provided his client index only. 
+ * Registers a player in the database, provided his client index only.
  *
- * This method converts the client index provided to an account id, retrieves 
+ * This method converts the client index provided to an account id, retrieves
  * the player's name, and calls Store_Register using that information.
  *
  * The logic of registering a player is explained in the Store_Register documentation.
@@ -266,7 +270,7 @@ native void Store_Register(int  accountId, const char[] name = "", int credits =
  * As with all other store-backend methods, this method is completely asynchronous.
  *
  * @param client			Client index.
- * @param credits 			The amount of credits to give to the player if it's his first register. 
+ * @param credits 			The amount of credits to give to the player if it's his first register.
  *
  * @noreturn
  */
@@ -274,9 +278,9 @@ native void Store_RegisterClient(int client, int credits = 0);
 
 /**
  * This function was added back in 1.2.2 in order to add backwards compatibility for older modules.
- * 
+ *
  * This essentially just pulls the AccountID of the client using the 'GetSteamAccountID' function.
- * 
+ *
  * If you're building a module for the store, It's best that you just use that instead but you can use this if you so desire.
  *
  * @param client			Client index.
@@ -306,13 +310,13 @@ native int Store_GetClientUserID(int client);
 native int Store_SaveClientToken(int client, char[] sToken, bool bVerbose = true);
 
 /**
- * Retrieves items of a specific player in a specific category. 
+ * Retrieves items of a specific player in a specific category.
  *
  * To use this method, you can provide a callback for when the items are loaded.
  * The callback will provide an array of the items' IDs. You can then loop the array,
  * and find info about each item using the Store_GetItem* methods.
- * 
- * You can use the filter parameter to filter items returned by the following properties 
+ *
+ * You can use the filter parameter to filter items returned by the following properties
  *  - category_id (cell)
  *  - is_buyable (cell)
  *  - is_tradeable (cell)
@@ -320,11 +324,11 @@ native int Store_SaveClientToken(int client, char[] sToken, bool bVerbose = true
  *  - type (string)
  *
  * To use it, set it to a trie with some or all of the above properties.
- * IMPORTANT  You are *not* resposible for closing the filter trie's handle, 
+ * IMPORTANT  You are *not* resposible for closing the filter trie's handle,
  *            the store-backend module is.
  *
- * The items returned by this method are grouped by the item's name. That means that 
- * if a player has multiple items with the same name (the unique identifier of the item, NOT its 
+ * The items returned by this method are grouped by the item's name. That means that
+ * if a player has multiple items with the same name (the unique identifier of the item, NOT its
  * display name), then the array will only have one element of that item.
  *
  * To determine how many items the player has of the same name, the callback provides the
@@ -333,26 +337,26 @@ native int Store_SaveClientToken(int client, char[] sToken, bool bVerbose = true
  * To deremine whether or not an item is equipped in the loadout specified, the callback
  * provides the equipped[] array.
  *
- * For example 
+ * For example
  *
  *	new Handle filter = CreateTrie();
  * 	SetTrieString(filter, "type", "equipment");
- *	SetTrieValue(filter, "is_refundable", 1); 
+ *	SetTrieValue(filter, "is_refundable", 1);
  *
  *  Store_GetUserItems(filter,
- *                      GetSteamAccountID(client), 
- *                      Store_GetClientLoadout(client), 
+ *                      GetSteamAccountID(client),
+ *                      Store_GetClientLoadout(client),
  *                      GetUserItemsCallback);
  *
  *  public GetUserItemsCallback(items, bool equipped, itemCount, count, loadoutId, any data)
  *  {
  *      PrintToServer("Player's Inventory");
- *       
+ *
  *      for (new item = 0; item < count; item++)
  *      {
  *          decl char[] displayName[32];
  *          Store_GetItemDisplayName(items[item], displayName, sizeof(displayName));
- *          
+ *
  *          PrintToServer("Item  %s, Equipped  %b, Count  %d", displayName, equipped[item], itemCount[item]);
  *      }
  *  }
@@ -408,8 +412,8 @@ native void Store_GetCredits(int accountId, Store_GetCreditsCallback callback, a
 native int Store_GetCreditsEx(int accountId);
 
 /**
- * Gives a player a specific amount of credits. 
- * 
+ * Gives a player a specific amount of credits.
+ *
  * You can also set the credits parameter to a negative value to take credits
  * from the player.
  *
@@ -425,8 +429,8 @@ native int Store_GetCreditsEx(int accountId);
 native void Store_GiveCredits(int accountId, int credits, Store_GiveCreditsCallback callback = INVALID_FUNCTION, any data = 0);
 
 /**
- * Gives multiple players a specific amount of credits. 
- * 
+ * Gives multiple players a specific amount of credits.
+ *
  * You can also set the credits parameter to a negative value to take credits
  * from the players.
  *
@@ -441,8 +445,8 @@ native void Store_GiveCredits(int accountId, int credits, Store_GiveCreditsCallb
 native void Store_GiveCreditsToUsers(int[] accountIds, int accountIdsLength, int credits);
 
 /**
- * Gives multiple players different amounts of credits. 
- * 
+ * Gives multiple players different amounts of credits.
+ *
  * You can also set the credits parameter to a negative value to take credits
  * from the players.
  *
@@ -450,7 +454,7 @@ native void Store_GiveCreditsToUsers(int[] accountIds, int accountIdsLength, int
  *
  * @param accountIds	    The account IDs of the players, use GetSteamAccountID to convert a client index to account ID.
  * @param accountIdsLength  Players count.
- * @param credits           Amount of credits per player. 
+ * @param credits           Amount of credits per player.
  *
  * @noreturn
  */
@@ -463,7 +467,7 @@ native void Store_GiveDifferentCreditsToUsers(int[] accountIds, int accountIdsLe
  *
  * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
  * @param itemId 			The ID of the item to give to the player.
- * @param acquireMethod 		
+ * @param acquireMethod
  * @param callback		    A callback which will be called when the operation is finished.
  * @param plugin			The plugin owner of the callback.
  * @param data              Extra data value to pass to the callback.
@@ -473,8 +477,8 @@ native void Store_GiveDifferentCreditsToUsers(int[] accountIds, int accountIdsLe
 native void Store_GiveItem(int accountId, int itemId, Store_AcquireMethod acquireMethod = Store_Unknown, Store_AccountCallback callback = INVALID_FUNCTION, any data = 0);
 
 /**
- * Removes a player a specific amount of credits. 
- * 
+ * Removes a player a specific amount of credits.
+ *
  * You can also set the credits parameter to a negative value to take credits
  * from the player.
  *
@@ -491,8 +495,8 @@ native void Store_GiveItem(int accountId, int itemId, Store_AcquireMethod acquir
 native void Store_RemoveCredits(int accountId, int credits, Store_RemoveCreditsCallback callback = INVALID_FUNCTION, any data = 0);
 
 /**
- * Removes multiple players a specific amount of credits. 
- * 
+ * Removes multiple players a specific amount of credits.
+ *
  * You can also set the credits parameter to a positive value to give credits
  * to the players.
  *
@@ -507,8 +511,8 @@ native void Store_RemoveCredits(int accountId, int credits, Store_RemoveCreditsC
 native void Store_RemoveCreditsFromUsers(int[] accountIds, int[] accountIdsLength, int credits);
 
 /**
- * Removes from multiple players different amounts of credits. 
- * 
+ * Removes from multiple players different amounts of credits.
+ *
  * You can also set the credits parameter to a positive value to give credits
  * to the players.
  *
@@ -516,7 +520,7 @@ native void Store_RemoveCreditsFromUsers(int[] accountIds, int[] accountIdsLengt
  *
  * @param accountIds	    The account IDs of the players, use GetSteamAccountID to convert a client index to account ID.
  * @param accountIdsLength  Players count.
- * @param credits           Amount of credits per player. 
+ * @param credits           Amount of credits per player.
  *
  * @noreturn
  */
@@ -524,7 +528,7 @@ native void Store_RemoveDifferentCreditsFromUsers(int[] accountIds, int[] accoun
 
 /**
  * Buys an item for a player, using his credits.
- * 
+ *
  * To determine whether or not the process of buying that item was successful,
  * use the 'success' parameter that is provided by the callback.
  * A false value of that parameter probably means that the user didn't have enough credits.
@@ -542,7 +546,7 @@ native void Store_BuyItem(int accountId, int itemId, Store_BuyItemCallback callb
 
 /**
  * Removes one copy of an item from a player's inventory.
- * 
+ *
  * As with all other store-backend methods, this method is completely asynchronous.
  *
  * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
@@ -556,7 +560,7 @@ native void Store_RemoveUserItem(int accountId, int itemId, Store_UseItemCallbac
 
 /**
  * Changes item equipped state in a specific loadout for a player.
- * 
+ *
  * As with all other store-backend methods, this method is completely asynchronous.
  *
  * @param accountId		    The account ID of the player, use GetSteamAccountID to convert a client index to account ID.
@@ -571,14 +575,14 @@ native void Store_RemoveUserItem(int accountId, int itemId, Store_UseItemCallbac
 native void Store_SetItemEquippedState(int accountId, int itemId, int loadoutId, bool isEquipped, Store_EquipItemCallback callback, any data = 0);
 
 /**
- * Retrieves equipped items of a specific player in a specific type. 
+ * Retrieves equipped items of a specific player in a specific type.
  *
  * To use this method, you can provide a callback for when the items are loaded.
  * The callback will provide an array of the items' IDs. You can then loop the array,
  * and find info about each item using the Store_GetItem* methods.
- * 
- * The items returned by this method are grouped by the item's name. That means that 
- * if a player has multiple items with the same name (the unique identifier of the item, NOT its 
+ *
+ * The items returned by this method are grouped by the item's name. That means that
+ * if a player has multiple items with the same name (the unique identifier of the item, NOT its
  * display name), then the array will only have one element of that item.
  *
  * To determine how many items the player has of the same name, the callback provides the
@@ -587,22 +591,22 @@ native void Store_SetItemEquippedState(int accountId, int itemId, int loadoutId,
  * To deremine whether or not an item is equipped in the loadout specified, the callback
  * provides the equipped[] array.
  *
- * For example 
- * 
- *  Store_GetUserItems(GetSteamAccountID(client), 
- *                      categoryId, 
- *                      Store_GetClientLoadout(client), 
+ * For example
+ *
+ *  Store_GetUserItems(GetSteamAccountID(client),
+ *                      categoryId,
+ *                      Store_GetClientLoadout(client),
  *                      GetUserItemsCallback);
  *
  *  public GetUserItemsCallback(items, bool equipped, itemCount, count, loadoutId, any data)
  *  {
  *      PrintToServer("Player's Inventory");
- *       
+ *
  *      for (new item = 0; item < count; item++)
  *      {
  *          decl char[] displayName[32];
  *          Store_GetItemDisplayName(items[item], displayName, sizeof(displayName));
- *          
+ *
  *          PrintToServer("Item  %s, Equipped  %b, Count  %d", displayName, equipped[item], itemCount[item]);
  *      }
  *  }
@@ -622,26 +626,26 @@ native void Store_SetItemEquippedState(int accountId, int itemId, int loadoutId,
 native void Store_GetEquippedItemsByType(int accountId, const char[] type, int loadoutId, Store_GetItemsCallback callback = INVALID_FUNCTION, any data = 0);
 
 /**
- * Retrieves all item categories from the database. 
+ * Retrieves all item categories from the database.
  *
- * The store-backend module builds a cache of the categories retrieved the first time 
+ * The store-backend module builds a cache of the categories retrieved the first time
  * this method is called, for faster access the next time it's called.
  *
  * You can set the loadFromCache parameter of this method to false to retrieve categories
  * from the database and not from the cache.
  *
- * The store-core module calls this method when it is loaded to build a cache of 
+ * The store-core module calls this method when it is loaded to build a cache of
  * categories.
  *
- * It also provides the store_reloaditems command to reload items and categories 
- * from the database. 
+ * It also provides the store_reloaditems command to reload items and categories
+ * from the database.
  *
  * To use this method, you can provide a callback for when the categories are loaded.
  * The callback will provide an array of the categories' IDs. You can then loop the array,
  * and find info about each category using the Store_GetCategory* methods.
  *
- * For example 
- * 
+ * For example
+ *
  *  Store_GetCategories(OnCategoriesLoaded);
  *
  *  public OnCategoriesLoaded(categories, count, any data)
@@ -650,7 +654,7 @@ native void Store_GetEquippedItemsByType(int accountId, const char[] type, int l
  *      {
  *          decl char[] displayName[32];
  *          Store_GetCategoryDisplayName(categories[category], displayName, sizeof(displayName));
- *          
+ *
  *          PrintToServer(displayName);
  *      }
  *  }
@@ -658,7 +662,7 @@ native void Store_GetEquippedItemsByType(int accountId, const char[] type, int l
  * As with all other store-backend methods, this method is completely asynchronous.
  *
  * @param callback		    A callback which will be called when the categories are loaded.
- * @param loadFromCache     Whether to load categories from cache. If false, the method will 
+ * @param loadFromCache     Whether to load categories from cache. If false, the method will
  *                          query the database and rebuild its cache.
  * @param sPriority		    Priority string to use when querying database for categories. (Primarily used with the shop module)
  * @param data              Extra data value to pass to the callback.
@@ -672,7 +676,7 @@ native void Store_GetCategories(Store_GetItemsCallback callback = INVALID_FUNCTI
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all categories.
- * 
+ *
  * @param id                Category's ID.
  *
  * @return Categories priority number.
@@ -684,7 +688,7 @@ native int Store_GetCategoryPriority(int id);
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all categories.
- * 
+ *
  * @param id                Category's ID.
  * @param displayName       Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -698,7 +702,7 @@ native void Store_GetCategoryDisplayName(int id, char[] displayName, int maxleng
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all categories.
- * 
+ *
  * @param id 				Category's ID.
  * @param description       Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -708,11 +712,11 @@ native void Store_GetCategoryDisplayName(int id, char[] displayName, int maxleng
 native void Store_GetCategoryDescription(int id, char[] description, int maxlength);
 
 /**
- * Retrieves the plugin name that is required for a specific category. 
+ * Retrieves the plugin name that is required for a specific category.
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all categories.
- * 
+ *
  * @param id                Category's ID.
  * @param pluginRequired    Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -726,7 +730,7 @@ native void Store_GetCategoryPluginRequired(int id, char[] pluginRequired, int m
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all categories.
- * 
+ *
  * @param id                Category's ID.
  *
  * @return	True if enabled, false otherwise.
@@ -743,15 +747,15 @@ native bool Store_GetCategoryServerRestriction(int id);
 native bool Store_ProcessCategory(int ServerID, int CategoryID);
 
 /**
- * Retrieves items from the database. 
+ * Retrieves items from the database.
  *
- * The store-backend module builds a cache of the items retrieved the first time 
+ * The store-backend module builds a cache of the items retrieved the first time
  * this method is called, for faster access the next time it's called.
  *
  * You can set the loadFromCache parameter of this method to false to retrieve categories
  * from the database and not from the cache.
  *
-  * You can use the filter parameter to filter items returned by the following properties 
+  * You can use the filter parameter to filter items returned by the following properties
  *  - category_id (cell)
  *  - is_buyable (cell)
  *  - is_tradeable (cell)
@@ -759,23 +763,23 @@ native bool Store_ProcessCategory(int ServerID, int CategoryID);
  *  - type (string)
  *
  * To use it, set it to a trie with some or all of the above properties.
- * IMPORTANT  You are *not* resposible for closing the filter trie's handle, 
+ * IMPORTANT  You are *not* resposible for closing the filter trie's handle,
  *            the store-backend module is.
  *
- * The store-backend module calls this method when it is loaded to build a cache of 
- * categories. It also provides the store_reloaditems command to reload items and categories 
- * from the database. 
+ * The store-backend module calls this method when it is loaded to build a cache of
+ * categories. It also provides the store_reloaditems command to reload items and categories
+ * from the database.
  *
  * To use this method, you can provide a callback for when the items are loaded.
  * The callback will provide an array of the items' IDs. You can then loop the array,
  * and find info about each item using the Store_GetItem* methods.
  *
- * For example 
- * 
+ * For example
+ *
  *	new Handle filter = CreateTrie();
  * 	SetTrieString(filter, "type", "equipment");
  *	SetTrieValue(filter, "is_buyable", 1);
- * 
+ *
  *  Store_GetItems(filter, OnItemsLoaded);
  *
  *  public OnItemsLoaded(items, count, any data)
@@ -784,7 +788,7 @@ native bool Store_ProcessCategory(int ServerID, int CategoryID);
  *      {
  *          decl char[] displayName[32];
  *          Store_GetItemDisplayName(items[item], displayName, sizeof(displayName));
- *          
+ *
  *          PrintToServer(displayName);
  *      }
  *  }
@@ -793,7 +797,7 @@ native bool Store_ProcessCategory(int ServerID, int CategoryID);
  *
  * @param filter            A trie which will be used to filter the loadouts returned.
  * @param callback		    A callback which will be called when the items are loaded.
- * @param loadFromCache     Whether to load items from cache. If false, the method will 
+ * @param loadFromCache     Whether to load items from cache. If false, the method will
  *                          query the database and rebuild its cache.
  * @param sPriority		    Priority string to use when querying database for items. (Primarily used with the shop module)
  * @param data              Extra data value to pass to the callback.
@@ -805,10 +809,10 @@ native void Store_GetItems(Handle filter = INVALID_HANDLE, Store_GetItemsCallbac
 /**
  * Retrieves an item's priority number by its ID.
  *
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Item's ID.
  *
  * @return Item priority number.
@@ -822,10 +826,10 @@ native int Store_GetItemPriority(int id);
  * that its name is a lowered-case unique identifier of it, and
  * its display name is what actually displayed in the store UI (which
  * doesnt has to be unique).
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  * @param name 				Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -841,10 +845,10 @@ native void Store_GetItemName(int id, char[] name, int maxlength);
  * that its name is a lowered-case unique identifier of it, and
  * its display name is what actually displayed in the store UI (which
  * doesnt has to be unique).
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  * @param displayName       Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -855,10 +859,10 @@ native void Store_GetItemDisplayName(int id, char[] displayName, int maxlength);
 
 /**
  * Retrieves an item's description by its ID.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  * @param description       Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -869,10 +873,10 @@ native void Store_GetItemDescription(int id, char[] description, int maxlength);
 
 /**
  * Retrieves an item's type by its ID.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  * @param type              Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -883,10 +887,10 @@ native void Store_GetItemType(int id, char[] type, int maxlength);
 
 /**
  * Retrieves an item's loadout slot by its ID.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  * @param loadoutSlot       Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -897,10 +901,10 @@ native void Store_GetItemLoadoutSlot(int id, char[] loadoutSlot, int maxlength);
 
 /**
  * Retrieves an item's price by its ID.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  *
  * @return The item's price.
@@ -909,10 +913,10 @@ native int Store_GetItemPrice(int id);
 
 /**
  * Retrieves an item's category by its ID.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Category's ID.
  *
  * @return The item's category ID.
@@ -921,10 +925,10 @@ native int Store_GetItemCategory(int id);
 
 /**
  * Determines whether or not an item is buyable.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Item's ID.
  *
  * @return True if buyable, false otherwise.
@@ -933,10 +937,10 @@ native bool Store_IsItemBuyable(int id);
 
 /**
  * Determines whether or not an item is tradeable.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Item's ID.
  *
  * @return True if tradeable, false otherwise.
@@ -945,10 +949,10 @@ native bool Store_IsItemTradeable(int id);
 
 /**
  * Determines whether or not an item is refundable.
- * 
+ *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all items.
- * 
+ *
  * @param id                Item's ID.
  *
  * @return True if refundable, false otherwise.
@@ -960,14 +964,14 @@ native bool Store_IsItemRefundable(int id);
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all categories.
- * 
+ *
  * @param id                Item's ID.
  *
  * @return	True if enabled, false otherwise.
  */
 native bool Store_GetItemServerRestriction(int id);
 
-/** 
+/**
  * Retrieves item attributes asynchronously.
  *
  * @param itemName			Item's name.
@@ -976,7 +980,7 @@ native bool Store_GetItemServerRestriction(int id);
  */
 native void Store_GetItemAttributes(const char[] itemName, Store_ItemGetAttributesCallback callback = INVALID_FUNCTION, any data = 0);
 
-/** 
+/**
  * Modifies item attributes asynchronously.
  *
  * @param itemName			Item's name.
@@ -995,36 +999,36 @@ native void Store_WriteItemAttributes(const char[] itemName, const char[] attrs,
 native bool Store_ProcessItem(int ServerID, int ItemID);
 
 /**
- * Retrieves loadouts from the database. 
+ * Retrieves loadouts from the database.
  *
- * The store-backend module builds a cache of the loadouts retrieved the first time 
+ * The store-backend module builds a cache of the loadouts retrieved the first time
  * this method is called, for faster access the next time it's called.
  *
  * You can set the loadFromCache parameter of this method to false to retrieve loadouts
  * from the database and not from the cache.
  *
- * You can use the filter parameter to filter loadouts returned by the following properties 
+ * You can use the filter parameter to filter loadouts returned by the following properties
  *  - game (string)
  *  - team (cell)
  *  - class (string)
  *
  * To use it, set it to a trie with some or all of the above properties.
- * IMPORTANT  You are *not* resposible for closing the filter trie's handle, 
+ * IMPORTANT  You are *not* resposible for closing the filter trie's handle,
  *            the store-backend module is.
- * 
- * The store-loadout module calls this method when it is loaded to build a cache of 
+ *
+ * The store-loadout module calls this method when it is loaded to build a cache of
  * loadouts.
  *
  * To use this method, you can provide a callback for when the items are loaded.
  * The callback will provide an array of the loadouts' IDs. You can then loop the array,
  * and find info about each item using the Store_GetLoadout* methods.
  *
- * For example 
+ * For example
  *
  *	new Handle filter = CreateTrie();
  * 	SetTrieString(filter, "game", "tf");
  *	SetTrieValue(filter, "team", GetClientTeam(client));
- *  
+ *
  *  Store_GetLoadouts(filter, OnLoadoutsLoaded);
  *
  *  public OnLoadoutsLoaded(loadouts, count, any data)
@@ -1033,7 +1037,7 @@ native bool Store_ProcessItem(int ServerID, int ItemID);
  *      {
  *          decl char[] displayName[32];
  *          Store_GetLoadoutDisplayName(loadouts[loadout], displayName, sizeof(displayName));
- *          
+ *
  *          PrintToServer(displayName);
  *      }
  *  }
@@ -1042,7 +1046,7 @@ native bool Store_ProcessItem(int ServerID, int ItemID);
  *
  * @param filter            A trie which will be used to filter the loadouts returned.
  * @param callback		   	A callback which will be called when the items are loaded.
- * @param loadFromCache     Whether to load items from cache. If false, the method will 
+ * @param loadFromCache     Whether to load items from cache. If false, the method will
  *                          query the database and rebuild its cache.
  * @param data              Extra data value to pass to the callback.
  *
@@ -1055,7 +1059,7 @@ native void Store_GetLoadouts(Handle filter = INVALID_HANDLE, Store_GetItemsCall
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all loadouts.
- * 
+ *
  * @param id                Category's ID.
  * @param displayName       Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -1069,7 +1073,7 @@ native void Store_GetLoadoutDisplayName(int id, char[] displayName, int maxlengt
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all loadouts.
- * 
+ *
  * @param id                Category's ID.
  * @param game              Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -1083,7 +1087,7 @@ native void Store_GetLoadoutGame(int id, char[] game, int maxlength);
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all loadouts.
- * 
+ *
  * @param id                Category's ID.
  * @param class             Buffer to store string in.
  * @param maxlength         Maximum length of string buffer.
@@ -1097,7 +1101,7 @@ native void Store_GetLoadoutClass(int id, char[] class, int maxlength);
  *
  * IMPORTANT  This method only works if the store-backend module has a cache
  * of all loadouts.
- * 
+ *
  * @param id                Category's ID.
  *
  * @return The loadout's team.
@@ -1106,12 +1110,12 @@ native int Store_GetLoadoutTeam(int id);
 
 /**
  * Retrieves a clients loadouts.
- * 
+ *
  * - If the player is already in the database, his name will be updated according
  *   to the 'name' parameter provided.
  *
  * - If the player is not in the database (for example, a new player who just joined
- *   the server for the first time), he will be added using the account ID and name 
+ *   the server for the first time), he will be added using the account ID and name
  *   provided.
  *
  * As with all other store-backend methods, this method is completely asynchronous.
@@ -1168,18 +1172,31 @@ native void Store_SQLTQuery(SQLTCallback callback, const char[] query, any data 
  * @param sOriginal		String to escape.
  * @param sNew			String buffer to store escaped string in.
  * @param size			Size of the escaped string. (Should be (2 * size + 1))
- * 
+ *
  * @noreturn
  */
 native void Store_SQLEscapeString(const char[] sOriginal, char[] sNew, int size);
 
 /**
+ * Sends a transaction to the database to process multiple queries and returns a callback based on the status returned. (Send SQL Queries to the Store database without creating a new connection in your plugin)
+ *
+ * @param trans			Transaction Handle
+ * @param trans_success	Callback will be returned if the transaction was successful.
+ * @param trans_failure	Callback will be returned if the transaction was a failure.
+ * @param data			Data to send to either callback.
+ * @param prio			Priority to use for this transaction.
+ *
+ * @noreturn
+ */
+native void Store_SQL_ExecuteTransaction(Transaction trans, Store_SQL_Transaction_Success trans_success = INVALID_FUNCTION, Store_SQL_Transaction_Failure trans_failure = INVALID_FUNCTION, any data = 0, DBPriority prio = DBPrio_Normal);
+
+/**
  * Sends a query to the database for a new log created. (Mainly used by the logging module but feel free to use this if you wish)
- * 
+ *
  * @param sSeverity		String to display the severity level.
  * @param sLocation		Location of the error. (usually plugin name)
  * @param sMessage		Message and/or log to give.
- * 
+ *
  * @noreturn
  */
 native void Store_SQLLogQuery(const char[] sSeverity, const char[] sLocation, const char[] sMessage);
@@ -1198,7 +1215,7 @@ native bool Store_DisplayClientsMenu(int client, MenuHandler hMenuHandler, bool 
 
 /**
  * Retrieves the global access type.
- * 
+ *
  * Access_Both
  * Access_Menus
  * Access_MOTDs
@@ -1292,7 +1309,7 @@ public __pl_store_core_SetNTVOptional()
 	MarkNativeAsOptional("Store_ClientIsDeveloper");
 	MarkNativeAsOptional("Store_GetClientToken");
 	MarkNativeAsOptional("Store_GenerateNewToken");
-	
+
 	MarkNativeAsOptional("Store_Register");
 	MarkNativeAsOptional("Store_RegisterClient");
 	MarkNativeAsOptional("Store_GetClientAccountID");
@@ -1313,7 +1330,7 @@ public __pl_store_core_SetNTVOptional()
 	MarkNativeAsOptional("Store_RemoveUserItem");
 	MarkNativeAsOptional("Store_SetItemEquippedState");
 	MarkNativeAsOptional("Store_GetEquippedItemsByType");
-	
+
 	MarkNativeAsOptional("Store_GetCategories");
 	MarkNativeAsOptional("Store_GetCategoryPriority");
 	MarkNativeAsOptional("Store_GetCategoryDisplayName");
@@ -1321,7 +1338,7 @@ public __pl_store_core_SetNTVOptional()
 	MarkNativeAsOptional("Store_GetCategoryPluginRequired");
 	MarkNativeAsOptional("Store_GetCategoryServerRestriction");
 	MarkNativeAsOptional("Store_ProcessCategory");
-	
+
 	MarkNativeAsOptional("Store_GetItems");
 	MarkNativeAsOptional("Store_GetItemPriority");
 	MarkNativeAsOptional("Store_GetItemName");
@@ -1338,7 +1355,7 @@ public __pl_store_core_SetNTVOptional()
 	MarkNativeAsOptional("Store_GetItemAttributes");
 	MarkNativeAsOptional("Store_WriteItemAttributes");
 	MarkNativeAsOptional("Store_ProcessItem");
-	
+
 	MarkNativeAsOptional("Store_GetLoadouts");
 	MarkNativeAsOptional("Store_GetLoadoutDisplayName");
 	MarkNativeAsOptional("Store_GetLoadoutGame");
@@ -1347,11 +1364,12 @@ public __pl_store_core_SetNTVOptional()
 	MarkNativeAsOptional("Store_GetClientLoadouts");
 	MarkNativeAsOptional("Store_QueryEquippedLoadout");
 	MarkNativeAsOptional("Store_SaveEquippedLoadout");
-	
+
 	MarkNativeAsOptional("Store_SQLTQuery");
 	MarkNativeAsOptional("Store_SQLEscapeString");
+	MarkNativeAsOptional("Store_SQL_ExecuteTransaction");
 	MarkNativeAsOptional("Store_SQLLogQuery");
-	
+
 	MarkNativeAsOptional("Store_DisplayClientsMenu");
 	MarkNativeAsOptional("Store_GetGlobalAccessType");
 }

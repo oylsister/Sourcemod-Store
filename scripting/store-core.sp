@@ -19,7 +19,7 @@
 #define MAX_MENU_ITEMS 32
 #define MAX_CHAT_COMMANDS 100
 
-char sQuery_Register[] = "INSERT INTO %s_users (auth, name, credits, token, ip) VALUES ('%d', '%s', '%d', '%s', '%s') ON DUPLICATE KEY UPDATE name = '%s', token = '%s', ip = '%s';";
+char sQuery_Register[] = "INSERT INTO %s_users (auth, name, ip, credits, token, first_created, last_updated) VALUES ('%d', '%s', '%s', '%d', '%s', '%d', '%d') ON DUPLICATE KEY UPDATE name = '%s', ip = '%s', token = '%s', last_updated = '%d';";
 char sQuery_GetClientUserID[] = "SELECT id FROM %s_users WHERE auth = '%d';";
 char sQuery_GetCategories[] = "SELECT id, priority, display_name, description, require_plugin, enable_server_restriction FROM %s_categories %s;";
 char sQuery_GetItems[] = "SELECT id, priority, name, display_name, description, type, loadout_slot, price, category_id, attrs, LENGTH(attrs) AS attrs_len, is_buyable, is_tradeable, is_refundable, flags, enable_server_restriction FROM %s_items %s;";
@@ -65,11 +65,21 @@ char sQuery_RemoveDifferentCreditsFromUsers[] = "UPDATE %s_users SET credits = c
 char sQuery_RemoveDifferentCreditsFromUsers_accountIdsLength[] = "%s WHEN %d THEN %d";
 char sQuery_RemoveDifferentCreditsFromUsers_End[] = "%s END WHERE auth IN (";
 char sQuery_GetCreditsEx[] = "SELECT credits FROM %s_users WHERE auth = %d;";
-char sQuery_RegisterPluginModule[] = "INSERT INTO %s_versions (mod_name, mod_description, mod_ver_convar, mod_ver_number, server_id, last_updated) VALUES ('%s', '%s', '%s', '%s', '%d', NOW()) ON DUPLICATE KEY UPDATE mod_name = VALUES(mod_name), mod_description = VALUES(mod_description), mod_ver_convar = VALUES(mod_ver_convar), mod_ver_number = VALUES(mod_ver_number), server_id = VALUES(server_id), last_updated = NOW();";
+char sQuery_RegisterPluginModule[] = "INSERT INTO %s_versions (mod_name, mod_description, mod_ver_convar, mod_ver_number, server_id, first_created, last_updated) VALUES ('%s', '%s', '%s', '%s', '%d', '%d', '%d') ON DUPLICATE KEY UPDATE mod_name = VALUES(mod_name), mod_description = VALUES(mod_description), mod_ver_convar = VALUES(mod_ver_convar), mod_ver_number = VALUES(mod_ver_number), server_id = VALUES(server_id), last_updated = '%d';";
 char sQuery_CacheRestrictionsCategories[] = "SELECT category_id, server_id FROM %s_servers_categories;";
 char sQuery_CacheRestrictionsItems[] = "SELECT item_id, server_id FROM %s_servers_items;";
 char sQuery_GenerateNewToken[] = "UPDATE `%s_users` SET token = '%s' WHERE auth = '%d'";
 char sQuery_LogToDatabase[] = "INSERT INTO %s_log (datetime, server_id, severity, location, message) VALUES (NOW(), '%i', '%s', '%s', '%s');";
+
+char sQuery_CreateTable_Categories[] = "CREATE TABLE IF NOT EXISTS `%s_categories` ( `id` int(11) NOT NULL AUTO_INCREMENT, `priority` int(11) default NULL, `display_name` varchar(32) NOT NULL, `description` varchar(128) default NULL, `require_plugin` varchar(32) default NULL, `web_description` text default NULL, `web_color` varchar(10) default NULL, `enable_server_restriction` int(11) default 0, `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Items[] = "CREATE TABLE IF NOT EXISTS `%s_items` ( `id` int(11) NOT NULL AUTO_INCREMENT, `priority` int(11) default NULL, `name` varchar(32) NOT NULL, `display_name` varchar(32) NOT NULL, `description` varchar(128) default NULL, `web_description` text, `type` varchar(32) NOT NULL, `loadout_slot` varchar(32) default NULL, `price` int(11) NOT NULL, `category_id` int(11) NOT NULL, `attrs` text default NULL,  `is_buyable` tinyint(1) NOT NULL DEFAULT '1', `is_tradeable` tinyint(1) NOT NULL DEFAULT '1', `is_refundable` tinyint(1) NOT NULL DEFAULT '1', `expiry_time` int(11) NULL, `flags` varchar(11) default NULL, `enable_server_restriction` int(11) default 0, `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY (`id`), UNIQUE KEY `name` (`name`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Loadouts[] = "CREATE TABLE IF NOT EXISTS `%s_loadouts` ( `id` int(11) NOT NULL AUTO_INCREMENT, `display_name` varchar(32) NOT NULL, `game` varchar(32) default NULL, `class` varchar(32) default NULL, `team` int(11) default NULL, `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Users[] = "CREATE TABLE IF NOT EXISTS `%s_users` ( `id` int(11) NOT NULL AUTO_INCREMENT, `auth` int(11) NOT NULL, `name` varchar(32) NOT NULL, `ip` varchar(64) NOT NULL default '', `credits` int(11) NOT NULL, `token` varchar(%d) NOT NULL DEFAULT '', `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`), UNIQUE KEY `auth` (`auth`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Users_Items[] = "CREATE TABLE IF NOT EXISTS `%s_users_items` ( `id` int(11) NOT NULL AUTO_INCREMENT, `user_id` int(11) NOT NULL, `item_id` int(11) NOT NULL, `acquire_date` DATETIME NULL, `acquire_method` ENUM('shop', 'trade', 'gift', 'admin', 'web') NULL, `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Users_Items_Loadouts[] = "CREATE TABLE IF NOT EXISTS `%s_users_items_loadouts` ( `id` int(11) NOT NULL AUTO_INCREMENT, `useritem_id` int(11) NOT NULL, `loadout_id` int(11) NOT NULL, `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Versions[] = "CREATE TABLE IF NOT EXISTS `%s_versions` ( `id` INT(11) NOT NULL AUTO_INCREMENT, `mod_name` VARCHAR(64) NOT NULL, `mod_description` VARCHAR(64) NULL DEFAULT NULL, `mod_ver_convar` VARCHAR(64) NULL DEFAULT NULL, `mod_ver_number` VARCHAR(64) NOT NULL, `server_id` VARCHAR(64) NOT NULL, `first_created` bigint(12) default 0, `last_updated` bigint(12) default 0, PRIMARY KEY (`id`), UNIQUE INDEX `UNIQUE PLUGIN ON SERVER` (`mod_ver_convar`, `server_id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Servers_Categories[] = "CREATE TABLE IF NOT EXISTS `%s_servers_categories` ( `id` int(11) NOT NULL AUTO_INCREMENT, `category_id` int(11), `server_id` int(11), `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
+char sQuery_CreateTable_Servers_Items[] = "CREATE TABLE IF NOT EXISTS `%s_servers_items` ( `id` int(11) NOT NULL AUTO_INCREMENT, `item_id` int(11), `server_id` int(11), `first_created` bigint(11) default 0, `last_updated` bigint(11) default 0, PRIMARY KEY  (`id`) ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;";
 
 ////////////////////
 //Categories Data
@@ -268,9 +278,10 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	CreateNative("Store_GetClientLoadouts", Native_GetClientLoadouts);
 	CreateNative("Store_QueryEquippedLoadout", Native_QueryEquippedLoadout);
 	CreateNative("Store_SaveEquippedLoadout", Native_SaveEquippedLoadout);
-	
+
 	CreateNative("Store_SQLTQuery", Native_SQLTQuery);
 	CreateNative("Store_SQLEscapeString", Native_SQLEscapeString);
+	CreateNative("Store_SQL_ExecuteTransaction", Native_SQL_ExecuteTransaction);
 	CreateNative("Store_SQLLogQuery", Native_SQLLogQuery);
 
 	CreateNative("Store_DisplayClientsMenu", Native_DisplayClientsMenu);
@@ -281,13 +292,13 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	g_hOnChatCommandPostForward = CreateGlobalForward("Store_OnChatCommand_Post", ET_Ignore, Param_Cell, Param_String, Param_String);
 	g_hOnCategoriessCacheLoaded = CreateGlobalForward("Store_OnCategoriesCacheLoaded", ET_Ignore, Param_Array, Param_Cell);
 	g_hOnItemsCacheLoaded = CreateGlobalForward("Store_OnItemsCacheLoaded", ET_Ignore, Param_Array, Param_Cell);
-	
+
 	RegPluginLibrary("store-core");
 	return APLRes_Success;
 }
 
 public void OnPluginStart()
-{	
+{
 	LoadTranslations("common.phrases");
 	LoadTranslations("store.phrases");
 
@@ -297,14 +308,14 @@ public void OnPluginStart()
 	RegAdminCmd("sm_devmode", Command_DeveloperMode, ADMFLAG_ROOT, "Toggles developer mode on the client.");
 	RegAdminCmd("sm_givecredits", Command_GiveCredits, ADMFLAG_ROOT, "Gives credits to a player.");
 	RegAdminCmd("sm_removecredits", Command_RemoveCredits, ADMFLAG_ROOT, "Remove credits from a player.");
-	
+
 	hCategoriesCache = CreateArray();
 	hItemsCache = CreateArray();
 
 	hArray_Categories = CreateArray();
 	hArray_Items = CreateArray();
 	hArray_Loadouts = CreateArray();
-	
+
 	LoadConfig("Core", "configs/store/core.cfg");
 }
 
@@ -383,9 +394,9 @@ void LoadConfig(const char[] sName, const char[] sFile)
 	{
 		Store_LogNotice("SINGLE SERVER MODE IS ON!");
 	}
-	
+
 	Store_LogInformational("Store Config '%s' Loaded: %s", sName, sFile);
-	
+
 	if (IsServerProcessing())
 	{
 		ConnectSQL();
@@ -484,7 +495,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 			}
 		}
 	}
-	
+
 	return Plugin_Continue;
 }
 
@@ -513,7 +524,7 @@ public Action Command_ReloadItems(int client, int args)
 	{
 		CReplyToCommand(client, "There was an error reloading categories & items, please check error logs."); //Translate
 	}
-	
+
 	return Plugin_Handled;
 }
 
@@ -521,7 +532,7 @@ public Action Command_DeveloperMode(int client, int args)
 {
 	bDeveloperMode[client] = bDeveloperMode[client] ? false : true;
 	CPrintToChat(client, "%t%t", "Store Tag Colored", "Store Developer Toggled", bDeveloperMode[client] ? "ON" : "OFF");
-	
+
 	return Plugin_Handled;
 }
 
@@ -608,7 +619,7 @@ public Action Command_RemoveCredits(int client, int args)
 
 		Store_RemoveCredits(GetSteamAccountID(target_list[i]), iMoney, OnRemoveCreditsCallback, GetClientUserId(client));
 	}
-	
+
 	return Plugin_Handled;
 }
 
@@ -783,7 +794,7 @@ bool RegisterCommands(Handle plugin, const char[] commands, Store_ChatCommandCal
 
 		g_chatCommandCount++;
 	}
-	
+
 	return true;
 }
 
@@ -794,14 +805,16 @@ void Register(int accountId, const char[] name = "", int credits = 0, const char
 		Store_LogError("Error registering accountID '%i' under the name '%s', not connected to database.", accountId, name);
 		return;
 	}
-	
+
 	Store_LogInformational("Registering accountId %i in the database!", accountId);
-	
+
 	char safeName[2 * MAX_NAME_LENGTH + 1];
 	SQL_EscapeString(g_hSQL, name, safeName, sizeof(safeName));
 
+	int time = GetTime();
+
 	char sQuery[MAX_QUERY_SIZE];
-	Format(sQuery, sizeof(sQuery), sQuery_Register, STORE_DATABASE_PREFIX, accountId, safeName, credits, token, ip, safeName, token, ip);
+	Format(sQuery, sizeof(sQuery), sQuery_Register, STORE_DATABASE_PREFIX, accountId, safeName, ip, credits, token, time, time, safeName, ip, token, time);
 	Store_Local_TQuery("Register", SQLCall_Registration, sQuery, accountId);
 }
 
@@ -811,7 +824,7 @@ void RegisterClient(int client, int credits = 0)
 	{
 		return;
 	}
-	
+
 	Store_LogInformational("Registering client %N with %i credits.", client, credits);
 
 	char sName[MAX_NAME_LENGTH];
@@ -830,29 +843,29 @@ public void SQLCall_Registration(Handle owner, Handle hndl, const char[] error, 
 {
 	if (hndl == null)
 	{
-		Store_LogError("SQL Error on Register: %s", error);
+		Store_LogError("SQL Error on SQLCall_Registration: %s", error);
 		return;
 	}
-	
+
 	Store_LogInformational("Registration processing successful with accountId %i!", data);
 }
 
 bool GetCategories(int client = 0, Store_GetItemsCallback callback = INVALID_FUNCTION, Handle plugin = null, bool loadFromCache = true, char[] sPriority = "", any data = 0)
-{	
+{
 	int iSize = GetArraySize(hArray_Categories);
 
 	if (loadFromCache)
 	{
 		int[] categories = new int[iSize];
 		int count = 0;
-		
+
 		for (int i = 0; i < iSize; i++)
 		{
 			Handle hArray = GetArrayCell(hArray_Categories, i);
 			categories[count] = GetArrayCell(hArray, 0);
 			count++;
 		}
-		
+
 		if (callback != INVALID_FUNCTION)
 		{
 			Call_StartFunction(plugin, callback);
@@ -861,20 +874,20 @@ bool GetCategories(int client = 0, Store_GetItemsCallback callback = INVALID_FUN
 			Call_PushCell(data);
 			Call_Finish();
 		}
-		
+
 		Call_StartForward(g_hOnCategoriessCacheLoaded);
 		Call_PushArray(categories, count);
 		Call_PushCell(count);
 		Call_Finish();
-		
+
 		Store_LogDebug("Cache for categories has been loaded successfully with %i entries.", iSize);
-		
+
 		return true;
 	}
 	else
 	{
 		Store_LogDebug("Refreshing cache called for categories.");
-		
+
 		Handle hPack = CreateDataPack();
 		WritePackFunction(hPack, callback);
 		WritePackCell(hPack, plugin);
@@ -885,7 +898,7 @@ bool GetCategories(int client = 0, Store_GetItemsCallback callback = INVALID_FUN
 		Format(sQuery, sizeof(sQuery), sQuery_GetCategories, STORE_DATABASE_PREFIX, sPriority);
 		Store_Local_TQuery("GetCategories", SQLCall_RetrieveCategories, sQuery, hPack);
 	}
-	
+
 	return true;
 }
 
@@ -911,7 +924,7 @@ public void SQLCall_RetrieveCategories(Handle owner, Handle hndl, const char[] e
 	while (SQL_FetchRow(hndl))
 	{
 		Handle hArray = CreateArray(ByteCountToCells(1024));
-		
+
 		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		SQL_FetchString(hndl, 2, sDisplayName, sizeof(sDisplayName));
 
@@ -920,20 +933,20 @@ public void SQLCall_RetrieveCategories(Handle owner, Handle hndl, const char[] e
 
 		char sRequiredPlugin[STORE_MAX_REQUIREPLUGIN_LENGTH];
 		SQL_FetchString(hndl, 4, sRequiredPlugin, sizeof(sRequiredPlugin));
-		
+
 		PushArrayCell(hArray, SQL_FetchInt(hndl, 0));	//CategoryId
 		PushArrayCell(hArray, SQL_FetchInt(hndl, 1));	//CategoryPriority
 		PushArrayString(hArray, sDisplayName);			//CategoryDisplayName
 		PushArrayString(hArray, sDescription);			//CategoryDescription
 		PushArrayString(hArray, sRequiredPlugin);		//CategoryRequirePlugin
 		PushArrayCell(hArray, SQL_FetchInt(hndl, 5));	//CategoryDisableServerRestriction
-		
+
 		//Push the array handle into the global categories array.
 		PushArrayCell(hArray_Categories, hArray);
 	}
-	
+
 	Store_LogDebug("Categories SQL has successfully loaded with %i entries!", SQL_GetRowCount(hndl));
-	
+
 	GetCategories(client, callback, plugin, true, "", arg);
 }
 
@@ -999,14 +1012,14 @@ bool GetItems(int client = 0, Handle filter = null, Store_GetItemsCallback callb
 			Call_PushCell(data);
 			Call_Finish();
 		}
-		
+
 		Call_StartForward(g_hOnItemsCacheLoaded);
 		Call_PushArray(items, count);
 		Call_PushCell(count);
 		Call_Finish();
-		
+
 		Store_LogDebug("Cache for items has been loaded successfully with %i entries.", iSize);
-		
+
 		return true;
 	}
 	else
@@ -1024,7 +1037,7 @@ bool GetItems(int client = 0, Handle filter = null, Store_GetItemsCallback callb
 		Format(sQuery, sizeof(sQuery), sQuery_GetItems, STORE_DATABASE_PREFIX, sPriority);
 		Store_Local_TQuery("GetItems", SQLCall_RetrieveItems, sQuery, hPack);
 	}
-	
+
 	return true;
 }
 
@@ -1039,7 +1052,7 @@ public void SQLCall_RetrieveItems(Handle owner, Handle hndl, const char[] error,
 	int client = GetClientOfUserId(ReadPackCell(data));
 
 	CloseHandle(data);
-	
+
 	if (hndl == null)
 	{
 		Store_LogError("SQL Error on GetItems: %s", error);
@@ -1052,25 +1065,25 @@ public void SQLCall_RetrieveItems(Handle owner, Handle hndl, const char[] error,
 	{
 		int iID = SQL_FetchInt(hndl, 0);		//ItemId
 		int iPriority = SQL_FetchInt(hndl, 1);	//ItemPriority
-		
+
 		char sName[STORE_MAX_NAME_LENGTH];
 		SQL_FetchString(hndl, 2, sName, sizeof(sName));
-		
+
 		char sDisplayName[STORE_MAX_DISPLAY_NAME_LENGTH];
 		SQL_FetchString(hndl, 3, sDisplayName, sizeof(sDisplayName));
-		
+
 		char sDescription[STORE_MAX_DESCRIPTION_LENGTH];
 		SQL_FetchString(hndl, 4, sDescription, sizeof(sDescription));
-		
+
 		char sItemType[STORE_MAX_TYPE_LENGTH];
 		SQL_FetchString(hndl, 5, sItemType, sizeof(sItemType));
-		
+
 		char sLoadoutSlot[STORE_MAX_LOADOUTSLOT_LENGTH];
 		SQL_FetchString(hndl, 6, sLoadoutSlot, sizeof(sLoadoutSlot));
-		
+
 		int iPrice = SQL_FetchInt(hndl, 7);			//ItemPrice
 		int iCategoryID = SQL_FetchInt(hndl, 8);	//ItemCategoryId
-		
+
 		if (!SQL_IsFieldNull(hndl, 9))
 		{
 			int attrsLength = SQL_FetchInt(hndl, 10);
@@ -1081,18 +1094,18 @@ public void SQLCall_RetrieveItems(Handle owner, Handle hndl, const char[] error,
 
 			Store_CallItemAttrsCallback(sItemType, sName, attrs);
 		}
-		
+
 		int iIsBuyable = SQL_FetchInt(hndl, 11);	//ItemIsBuyable
 		int iIsTradeable = SQL_FetchInt(hndl, 12);	//ItemIsTradeable
 		int iIsRefundable = SQL_FetchInt(hndl, 13);	//ItemIsRefundable
-		
+
 		char sFlags[12];
 		SQL_FetchString(hndl, 14, sFlags, sizeof(sFlags));
-		
+
 		int iServerRestrict = SQL_FetchInt(hndl, 15);	//ItemDisableServerRestriction
-		
+
 		Handle hArray = CreateArray(ByteCountToCells(1024));
-		
+
 		PushArrayCell(hArray, iID);						//ItemId
 		PushArrayCell(hArray, iPriority);				//ItemPriority
 		PushArrayString(hArray, sName);					//ItemName
@@ -1107,15 +1120,15 @@ public void SQLCall_RetrieveItems(Handle owner, Handle hndl, const char[] error,
 		PushArrayCell(hArray, iIsRefundable);			//ItemIsRefundable
 		PushArrayCell(hArray, ReadFlagString(sFlags));	//ItemFlags
 		PushArrayCell(hArray, iServerRestrict);			//ItemDisableServerRestriction
-		
+
 		//Push the array into the items global array for use later.
 		PushArrayCell(hArray_Items, hArray);
-		
+
 		PrintToServer("ID: %i, Prio: %i, Name: %s, Desc: %s, Type: %s, Loadout: %s, Price: %i", iID, iPriority, sName, sDescription, sItemType, sLoadoutSlot, iPrice);
 	}
-	
+
 	Store_LogDebug("Items SQL has successfully loaded with %i entries!", SQL_GetRowCount(hndl));
-	
+
 	GetItems(client, filter, callback, plugin, true, "", arg);
 }
 
@@ -1125,7 +1138,7 @@ void GetCacheStacks()
 	{
 		return;
 	}
-	
+
 	char sQuery[MAX_QUERY_SIZE];
 
 	Format(sQuery, sizeof(sQuery), sQuery_CacheRestrictionsCategories, STORE_DATABASE_PREFIX);
@@ -1192,7 +1205,7 @@ void GetItemAttributes(const char[] itemName, Store_ItemGetAttributesCallback ca
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackString(hPack, itemName);
 	WritePackFunction(hPack, callback);
@@ -1252,7 +1265,7 @@ void WriteItemAttributes(const char[] itemName, const char[] attrs, Store_BuyIte
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
 	WritePackCell(hPack, plugin);
@@ -1304,16 +1317,16 @@ bool GetLoadouts(Handle filter = null, Store_GetItemsCallback callback = INVALID
 	{
 		int[] loadouts = new int[iSize];
 		int count = 0;
-		
+
 		bool gameFilter; bool teamFilter; bool classFilter;
 		char game[32]; char team[32]; char class[32];
-		
+
 		if (filter != null)
 		{
 			gameFilter = GetTrieString(filter, "game", game, sizeof(game));
 			teamFilter = GetTrieString(filter, "team", team, sizeof(team));
 			classFilter = GetTrieString(filter, "class", class, sizeof(class));
-	
+
 			CloseHandle(filter);
 		}
 
@@ -1326,7 +1339,7 @@ bool GetLoadouts(Handle filter = null, Store_GetItemsCallback callback = INVALID
 
 			char sClass[STORE_MAX_LOADOUTCLASS_LENGTH];
 			GetArrayString(hArray, 3, sClass, sizeof(sClass));
-			
+
 			char sTeam[STORE_MAX_LOADOUTCLASS_LENGTH];
 			GetArrayString(hArray, 4, sTeam, sizeof(sTeam));
 
@@ -1345,7 +1358,7 @@ bool GetLoadouts(Handle filter = null, Store_GetItemsCallback callback = INVALID
 			Call_PushCell(data);
 			Call_Finish();
 		}
-		
+
 		return true;
 	}
 	else
@@ -1360,7 +1373,7 @@ bool GetLoadouts(Handle filter = null, Store_GetItemsCallback callback = INVALID
 		Format(sQuery, sizeof(sQuery), sQuery_GetLoadouts, STORE_DATABASE_PREFIX);
 		Store_Local_TQuery("GetLoadouts", SQLCall_GetLoadouts, sQuery, hPack);
 	}
-	
+
 	return true;
 }
 
@@ -1374,13 +1387,13 @@ public void SQLCall_GetLoadouts(Handle owner, Handle hndl, const char[] error, a
 	int data2 = ReadPackCell(data);
 
 	CloseHandle(data);
-	
+
 	if (hndl == null)
 	{
 		Store_LogError("SQL Error on SQLCall_GetLoadouts: %s", error);
 		return;
 	}
-	
+
 	ClearArray2(hArray_Loadouts);
 
 	while (SQL_FetchRow(hndl))
@@ -1406,7 +1419,7 @@ public void SQLCall_GetLoadouts(Handle owner, Handle hndl, const char[] error, a
 
 		PushArrayCell(hArray_Loadouts, hArray);
 	}
-	
+
 	GetLoadouts(filter, callback, plugin, true, data2);
 }
 
@@ -1432,7 +1445,7 @@ void GetClientLoadouts(int accountId, Store_GetUserLoadoutsCallback callback, Ha
 		Store_LogError("Error getting accountId '%i' loadouts, no database connected.", accountId);
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackFunction(hPack, callback);
@@ -1486,7 +1499,7 @@ void QueryEquippedLoadout(int accountId, Store_GetUserEquippedLoadoutCallback ca
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackFunction(hPack, callback);
@@ -1532,7 +1545,7 @@ void SaveEquippedLoadout(int accountId, int loadoutId, Store_SaveUserEquippedLoa
 		Store_LogError("Error saving equipped loadout to database for accountId %i and loadoutId %i, no database connected.", accountId, loadoutId);
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, loadoutId);
@@ -1562,7 +1575,7 @@ public void SQLCall_SaveEquippedLoadout(Handle owner, Handle hndl, const char[] 
 		Store_LogError("SQL Error on SQLCall_SaveEquippedLoadout: %s", error);
 		return;
 	}
-	
+
 	if (callback != INVALID_FUNCTION)
 	{
 		Call_StartFunction(plugin, callback);
@@ -1580,7 +1593,7 @@ void GetUserItems(Handle filter = null, int accountId, int loadoutId, Store_GetU
 		Store_LogError("Error retrieving user items, not connected.");
 		return;
 	}
-	
+
 	PrintToServer("1: %i", data);
 
 	if (GetArraySize(hArray_Items) < 1)
@@ -1592,7 +1605,7 @@ void GetUserItems(Handle filter = null, int accountId, int loadoutId, Store_GetU
 		WritePackFunction(hPack, callback);
 		WritePackCell(hPack, plugin);
 		WritePackCell(hPack, data);
-		
+
 		Store_LogError("Store_GetUserItems has been called before items have loaded.");
 		GetItems(0, _, ReloadUserItems, _, true, "", hPack);
 
@@ -1636,16 +1649,16 @@ void GetUserItems(Handle filter = null, int accountId, int loadoutId, Store_GetU
 
 		Format(sQuery, sizeof(sQuery), sQuery_GetUserItems_type, sQuery, STORE_DATABASE_PREFIX, buffer);
 	}
-	
+
 	CloseHandle(filter);
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, loadoutId);
 	WritePackFunction(hPack, callback);
 	WritePackCell(hPack, plugin);
 	WritePackCell(hPack, data);
-	
+
 	PrintToServer("2: %i", data);
 
 	Format(sQuery, sizeof(sQuery), sQuery_GetUserItems_GroupByID, sQuery);
@@ -1655,7 +1668,7 @@ void GetUserItems(Handle filter = null, int accountId, int loadoutId, Store_GetU
 public void ReloadUserItems(int[] ids, int count, any hPack)
 {
 	ResetPack(hPack);
-	
+
 	Handle filter = view_as<Handle>(ReadPackCell(hPack));
 	int accountId = ReadPackCell(hPack);
 	int loadoutId = ReadPackCell(hPack);
@@ -1676,9 +1689,9 @@ public void SQLCall_GetUserItems(Handle owner, Handle hndl, const char[] error, 
 		Store_LogError("SQL Error on SQLCall_GetUserItems: %s", error);
 		return;
 	}
-	
+
 	ResetPack(data);
-	
+
 	int accountId = ReadPackCell(data);
 	int loadoutId = ReadPackCell(data);
 	Store_GetUserItemsCallback callback = view_as<Store_GetUserItemsCallback>(ReadPackFunction(data));
@@ -1702,9 +1715,9 @@ public void SQLCall_GetUserItems(Handle owner, Handle hndl, const char[] error, 
 
 		index++;
 	}
-	
+
 	PrintToServer("3: %i", arg);
-	
+
 	Call_StartFunction(plugin, callback);
 	Call_PushCell(accountId);
 	Call_PushArray(ids, count);
@@ -1723,7 +1736,7 @@ void GetUserItemsCount(int accountId, const char[] itemName, Store_GetUserItemsC
 		Store_LogError("Error retrieving user item count, not connected.");
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
 	WritePackCell(hPack, plugin);
@@ -1770,7 +1783,7 @@ void GetCredits(int accountId, Store_GetCreditsCallback callback, Handle plugin 
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
 	WritePackCell(hPack, plugin);
@@ -1889,7 +1902,7 @@ public void OnRemoveUserItem(int accountId, int itemId, int loadoutId, any hPack
 	{
 		return;
 	}
-	
+
 	char sQuery[MAX_QUERY_SIZE];
 	Format(sQuery, sizeof(sQuery), sQuery_RemoveUserItem, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, itemId, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, accountId);
 	Store_Local_TQuery("RemoveUserItemUnequipCallback", SQLCall_RemoveUserItem, sQuery, hPack);
@@ -1948,7 +1961,7 @@ public void OnUnequipItemToEquipNewItem(int accountId, int itemId, int loadoutId
 	{
 		return;
 	}
-	
+
 	char sQuery[MAX_QUERY_SIZE];
 	Format(sQuery, sizeof(sQuery), sQuery_EquipUnequipItem, STORE_DATABASE_PREFIX, loadoutId, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, STORE_DATABASE_PREFIX, accountId, STORE_DATABASE_PREFIX, itemId);
 	Store_Local_TQuery("EquipUnequipItemCallback", SQLCall_EquipItem, sQuery, hPack);
@@ -1987,7 +2000,7 @@ void UnequipItem(int accountId, int itemId, int loadoutId, Store_EquipItemCallba
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, itemId);
@@ -2040,7 +2053,7 @@ void GetEquippedItemsByType(int accountId, const char[] type, int loadoutId, Sto
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackFunction(hPack, callback);
 	WritePackCell(hPack, plugin);
@@ -2090,7 +2103,7 @@ void GiveCredits(int accountId, int credits, Store_GiveCreditsCallback callback,
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, credits);
@@ -2137,7 +2150,7 @@ void RemoveCredits(int accountId, int credits, Store_RemoveCreditsCallback callb
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackCell(hPack, credits);
@@ -2201,7 +2214,7 @@ void GiveItem(int accountId, int itemId, Store_AcquireMethod acquireMethod = Sto
 	{
 		return;
 	}
-	
+
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, accountId);
 	WritePackFunction(hPack, callback);
@@ -2257,7 +2270,7 @@ void GiveCreditsToUsers(int[] accountIds, int accountIdsLength, int credits)
 	{
 		return;
 	}
-	
+
 	if (accountIdsLength == 0)
 	{
 		return;
@@ -2295,7 +2308,7 @@ void RemoveCreditsFromUsers(int[] accountIds, int accountIdsLength, int credits)
 	{
 		return;
 	}
-	
+
 	if (accountIdsLength == 0)
 	{
 		return;
@@ -2333,7 +2346,7 @@ void GiveDifferentCreditsToUsers(int[] accountIds, int accountIdsLength, int[] c
 	{
 		return;
 	}
-	
+
 	if (accountIdsLength == 0)
 	{
 		return;
@@ -2378,7 +2391,7 @@ void RemoveDifferentCreditsFromUsers(int[] accountIds, int accountIdsLength, int
 	{
 		return;
 	}
-	
+
 	if (accountIdsLength == 0)
 	{
 		return;
@@ -2423,17 +2436,17 @@ bool ReloadCacheStacks(int client = 0)
 	{
 		return false;
 	}
-	
+
 	if (GetCategories(client, INVALID_FUNCTION, null, false, "", 0))
 	{
 		CPrintToChatAll("%t%t", "Store Tag Colored", "Reloaded categories");
 	}
-	
+
 	if (GetItems(client, null, INVALID_FUNCTION, null, false, "", 0))
 	{
 		CPrintToChatAll("%t%t", "Store Tag Colored", "Reloaded items");
 	}
-	
+
 	GetCacheStacks();
 	return true;
 }
@@ -2466,11 +2479,48 @@ public void SQLCall_ConnectToDatabase(Handle owner, Handle hndl, const char[] er
 		Store_LogError("Connection to SQL database has failed! Error: %s", error);
 		return;
 	}
-	
-	g_hSQL = CloneHandle(hndl);
+
+	g_hSQL = hndl;
 	SQL_SetCharset(g_hSQL, "utf8");
 
-	CloseHandle(hndl);
+	if (g_hSQL == null)
+	{
+		Store_LogError("Error connecting to database, contact a developer as this is a plugin issue.");
+		return;
+	}
+
+	Transaction trans = SQL_CreateTransaction();
+
+	char sQuery[MAX_QUERY_SIZE];
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Categories, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Items, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Loadouts, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Users, STORE_DATABASE_PREFIX, MAX_TOKEN_SIZE);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Users_Items, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Users_Items_Loadouts, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Versions, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Servers_Categories, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Format(sQuery, sizeof(sQuery), sQuery_CreateTable_Servers_Items, STORE_DATABASE_PREFIX);
+	SQL_AddQuery(trans, sQuery);
+
+	Store_SQL_ExecuteTransaction(trans);
 
 	Store_RegisterPluginModule(PLUGIN_NAME, PLUGIN_DESCRIPTION, PLUGIN_VERSION_CONVAR, STORE_VERSION);
 
@@ -2479,6 +2529,15 @@ public void SQLCall_ConnectToDatabase(Handle owner, Handle hndl, const char[] er
 	Call_Finish();
 
 	ReloadCacheStacks();
+}
+
+public void TQuery_CreateTable(Handle owner, Handle hndl, const char[] error, any data)
+{
+	if (hndl == null)
+	{
+		Store_LogError("Error while creating a new table: %s", error);
+		return;
+	}
 }
 
 void Store_Local_TQuery(const char[] sQueryName, SQLTCallback callback, const char[] sQuery, any data = 0)
@@ -2511,7 +2570,7 @@ public int Native_RegisterPluginModule(Handle plugin, int numParams)
 		ThrowNativeError(SP_ERROR_NATIVE, "Error registering plugin to database, not connected.");
 		return;
 	}
-	
+
 	int ServerID = Store_GetServerID();
 
 	int length;
@@ -2544,8 +2603,10 @@ public int Native_RegisterPluginModule(Handle plugin, int numParams)
 		return;
 	}
 
+	int time = GetTime();
+
 	char sQuery[MAX_QUERY_SIZE];
-	Format(sQuery, sizeof(sQuery), sQuery_RegisterPluginModule, STORE_DATABASE_PREFIX, sName, sDescription, sVersion_ConVar, sVersion, ServerID);
+	Format(sQuery, sizeof(sQuery), sQuery_RegisterPluginModule, STORE_DATABASE_PREFIX, sName, sDescription, sVersion_ConVar, sVersion, ServerID, time, time, time);
 	Store_Local_TQuery("RegisterPluginModule", SQLCall_RegisterPluginModule, sQuery);
 }
 
@@ -2602,7 +2663,7 @@ public int Native_OpenMOTDWindow(Handle plugin, int numParams)
 	{
 		EmitSoundToClient(client, sSound);
 	}
-	
+
 	return true;
 }
 
@@ -2653,7 +2714,7 @@ public int Native_RegisterChatCommands(Handle plugin, int params)
 {
 	char command[32];
 	GetNativeString(1, command, sizeof(command));
-	
+
 	return RegisterCommands(plugin, command, view_as<Store_ChatCommandCallback>(GetNativeFunction(2)));
 }
 
@@ -2669,7 +2730,7 @@ public int Native_GetServerID(Handle plugin, int params)
 
 		return g_serverID;
 	}
-	
+
 	return g_serverID;
 }
 
@@ -2728,7 +2789,7 @@ public int Native_GetClientAccountID(Handle plugin, int numParams)
 		ThrowNativeError(SP_ERROR_INDEX, "Error retrieving client Steam Account ID %L.", client);
 		return -1;
 	}
-	
+
 	return AccountID;
 }
 
@@ -2736,7 +2797,7 @@ public int Native_GetClientUserID(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
 	int user_id = -1;
-	
+
 	if (!IsDatabaseConnected())
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Error retrieving client '%L' database userid, not connected.", client);
@@ -2761,20 +2822,20 @@ public int Native_GetClientUserID(Handle plugin, int numParams)
 	}
 
 	CloseHandle(hQuery);
-	
+
 	return user_id;
 }
 
 public int Native_SaveClientToken(Handle plugin, int numParams)
 {
 	int client = GetNativeCell(1);
-	
+
 	if (!IsDatabaseConnected())
 	{
 		ThrowNativeError(SP_ERROR_NATIVE, "Error saving client '%L' token to database, not connected.", client);
 		return;
 	}
-	
+
 	char sToken[MAX_TOKEN_SIZE];
 	GetNativeString(2, sToken, sizeof(sToken));
 
@@ -2830,7 +2891,7 @@ public int Native_GetCreditsEx(Handle plugin, int numParams)
 	}
 
 	CloseHandle(hQuery);
-	
+
 	return credits;
 }
 
@@ -2935,7 +2996,7 @@ public int Native_GetCategoryPriority(Handle plugin, int numParams)
 {
 	int index = GetCategoryIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Categories, index);
-	
+
 	return GetArrayCell(hArray, 1);
 }
 
@@ -3000,7 +3061,7 @@ public int Native_ProcessCategory(Handle plugin, int numParams)
 			return true;
 		}
 	}
-	
+
 	return true;
 }
 
@@ -3021,7 +3082,7 @@ public int Native_GetItemPriority(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 1);
 }
 
@@ -3084,7 +3145,7 @@ public int Native_GetItemPrice(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 7);
 }
 
@@ -3092,7 +3153,7 @@ public int Native_GetItemCategory(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 8);
 }
 
@@ -3100,7 +3161,7 @@ public int Native_IsItemBuyable(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 9);
 }
 
@@ -3108,7 +3169,7 @@ public int Native_IsItemTradeable(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 10);
 }
 
@@ -3116,7 +3177,7 @@ public int Native_IsItemRefundable(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 11);
 }
 
@@ -3124,7 +3185,7 @@ public int Native_GetItemServerRestriction(Handle plugin, int numParams)
 {
 	int index = GetItemIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Items, index);
-	
+
 	return GetArrayCell(hArray, 13);
 }
 
@@ -3170,7 +3231,7 @@ public int Native_ProcessItem(Handle plugin, int numParams)
 			return true;
 		}
 	}
-	
+
 	return false;
 }
 
@@ -3218,7 +3279,7 @@ public int Native_GetLoadoutTeam(Handle plugin, int numParams)
 {
 	int index = GetLoadoutIndex(GetNativeCell(1));
 	Handle hArray = GetArrayCell(hArray_Loadouts, index);
-	
+
 	return GetArrayCell(hArray, 4);
 }
 
@@ -3245,7 +3306,7 @@ public int Native_SQLTQuery(Handle plugin, int numParams)
 	{
 		return;
 	}
-	
+
 	SQLTCallback callback = view_as<SQLTCallback>(GetNativeFunction(1));
 
 	int size;
@@ -3279,13 +3340,77 @@ public int Native_SQLEscapeString(Handle plugin, int numParams)
 	SetNativeString(2, sNew, size);
 }
 
+public int Native_SQL_ExecuteTransaction(Handle plugin, int numParams)
+{
+	Transaction trans = view_as<Transaction>(GetNativeCell(1));
+
+	Store_SQL_Transaction_Success fSuccess = view_as<Store_SQL_Transaction_Success>(GetNativeFunction(2));
+	Store_SQL_Transaction_Failure fFailure = view_as<Store_SQL_Transaction_Failure>(GetNativeFunction(3));
+
+	any data = GetNativeCell(4);
+	DBPriority prio = view_as<DBPriority>(GetNativeCell(5));
+
+	DataPack hPack = CreateDataPack();
+	WritePackCell(hPack, plugin);
+	WritePackFunction(hPack, fSuccess);
+	WritePackFunction(hPack, fFailure);
+	WritePackCell(hPack, data);
+
+	SQL_ExecuteTransaction(g_hSQL, trans, Native_SQL_Transaction_Success, Native_SQL_Transaction_Failure, hPack, prio);
+}
+
+public void Native_SQL_Transaction_Success(Handle db, DataPack data, int numQueries, Handle[] results, any[] queryData)
+{
+	ResetPack(data);
+
+	Handle plugin = view_as<Handle>(ReadPackCell(data));
+	Store_SQL_Transaction_Success callback = view_as<Store_SQL_Transaction_Success>(ReadPackFunction(data));
+	ReadPackFunction(data);
+	any pack_data = ReadPackCell(data);
+
+	CloseHandle(data);
+
+	if (callback != INVALID_FUNCTION)
+	{
+		Call_StartFunction(plugin, callback);
+		Call_PushCell(pack_data);
+		Call_PushCell(numQueries);
+		Call_PushArray(results, numQueries);
+		Call_PushArray(queryData, numQueries);
+		Call_Finish();
+	}
+}
+
+public void Native_SQL_Transaction_Failure(Handle db, DataPack data, int numQueries, const char[] error, int failIndex, any[] queryData)
+{
+	ResetPack(data);
+
+	Handle plugin = view_as<Handle>(ReadPackCell(data));
+	ReadPackFunction(data);
+	Store_SQL_Transaction_Failure callback = view_as<Store_SQL_Transaction_Failure>(ReadPackFunction(data));
+	any pack_data = ReadPackCell(data);
+
+	CloseHandle(data);
+
+	if (callback != INVALID_FUNCTION)
+	{
+		Call_StartFunction(plugin, callback);
+		Call_PushCell(pack_data);
+		Call_PushCell(numQueries);
+		Call_PushString(error);
+		Call_PushCell(failIndex);
+		Call_PushArray(queryData, numQueries);
+		Call_Finish();
+	}
+}
+
 public int Native_SQLLogQuery(Handle plugin, int numParams)
 {
 	if (!IsDatabaseConnected())
 	{
 		return;
 	}
-	
+
 	int size;
 
 	GetNativeStringLength(1, size);
@@ -3344,7 +3469,7 @@ public int Native_DisplayClientsMenu(Handle plugin, int numParams)
 	{
 		AddMenuItem(hMenu, "", "[None Found]", ITEMDRAW_DISABLED);
 	}
-	
+
 	return DisplayMenu(hMenu, client, MENU_TIME_FOREVER);
 }
 

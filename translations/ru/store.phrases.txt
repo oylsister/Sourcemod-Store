@@ -1,0 +1,427 @@
+"Phrases"
+{
+	"Store Tag"
+	{
+		"#format"		""
+		"ru"			"[Store] "
+	}
+	
+	"Store Tag Colored"
+	{
+		"#format"		""
+		"ru"			"{GREEN}[Store] {DEFAULT}"
+	}
+	
+	"Store Menu Title"
+	{
+		"ru"			"Sourcemod Store: "
+	}
+	
+	"Store Menu Credits"
+	{
+		"#format"		"{1:s},{2:d}"
+		"ru"			"{1}: {2}"
+	}
+	
+	"Store Menu Main Menu"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Главное меню [{1}]"
+	}
+	
+	"Store Menu Shop Menu"
+	{
+		"ru"			"Меню магазина"
+	}
+	
+	"Store Menu Inventory Menu"
+	{
+		"ru"			"Меню инвентаря"
+	}
+	
+	"Store Menu Gifting Menu"
+	{
+		"ru"			"Меню подарков"
+	}
+	
+	"Store Menu Refunds Menu"
+	{
+		"ru"			"Меню возврата"
+	}
+	
+	"Store Menu Loadouts Menu"
+	{
+		"ru"			"Меню снаряжения"
+	}
+	
+	"Store Menu Trades Menu"
+	{
+		"ru"			"Меню обмена"
+	}
+	
+	"Loadout"
+	{
+		"ru"			"Снаряжение"
+	}
+	
+	"No categories available"
+	{
+		"ru"			"Нет доступных категорий."
+	}
+	
+	"No items in this category"
+	{
+		"ru"			"В этой категории нет предметов."
+	}
+	
+	"Inventory category is empty"
+	{
+		"ru"			"В данный момент у вас нет предметов в этой категории."
+	}
+	
+	"Item type not registered"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Тип предмета '{1}' не был зарегистрирован ни одним плагином."
+	}
+	
+	"Not enough credits to buy"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вам не хватает {1} чтобы купить этот предмет."
+	}
+	
+	"No item attributes"
+	{
+		"ru"			"Атрибуты не найдены."
+	}
+	
+	"Equipped item"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы надели {1}."
+	}
+	
+	"Unequipped item"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы сняли {1}."
+	}
+	
+	"Must be alive to equip"
+	{
+		"ru"			"Вы должны быть живы, чтобы надеть этот предмет."
+	}
+	
+	"Must be alive to use"
+	{
+		"ru"			"Вы должны быть живы, чтобы надеть этот предмет."
+	}
+	
+	"Must be human to equip"
+	{
+		"ru"			"Вы должны быть человеком, чтобы надеть этот предмет."
+	}
+	
+	"Must be human to use"
+	{
+		"ru"			"Вы должны быть человеком, чтобы использовать этот предмет."	
+	}
+	
+	"Limit item uses in a round"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы можете использовать этот предмет только {1} раз за раунд."
+	}
+	
+	"Player model unsupported"
+	{
+		"ru"			"Ваша модель игрока не поддерживает снаряжение."
+	}
+	
+	"Received Credits"
+	{
+		"#format"		"{1:d},{2:s}"
+		"ru"			"Вы только что получили {1} {2}!"
+	}
+	
+	"Deducted Credits"
+	{
+		"#format"		"{1:d},{2:s}"
+		"ru"			"У вас только что были вычтены {1} {2}!"
+	}
+	
+	"Deducted Credits Less Than Zero"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Ваши {1} были установлены в 0 из-за перехода в отрицательный!"
+	}
+	
+	"Item Purchase Confirmation"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы уверены, что хотите купить {1}?"
+	}
+	
+	"Item Purchase Successful"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы купили '{olive}{1}{default}'!"
+	}
+	
+	"Item Purchase Menu Title"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Надеть {1} сейчас?"
+	}
+	
+	"Item Purchase Equipped"
+	{
+		"#format"		"{1:s},{2:d}"
+		"ru"			"Вы надели '{olive}{1}{default}' в ваше снаряжение {olive}{2}{default}.!"
+	}
+	
+	"Refund"
+	{
+		"ru"			"Возврат"
+	}
+	
+	"Gift"
+	{
+		"ru"			"Подарить"
+	}
+	
+	"Refund Message"
+	{
+		"#format"		"{1:s},{2:d},{3:s}"
+		"ru"			"Вы сдали обратно {1} за {2} {3}."
+	}
+	
+	"Item Refund Confirmation"
+	{
+		"#format"		"{1:s},{2:d},{3:s}"
+		"ru"			"Вы уверены, что хотите сдать предмет {1} за {2} {3}?"
+	}
+	
+	"Equipped item apply next spawn"
+	{
+		"ru"			"Вы надели предмет. Он вступит в силу в вашем следующем возрождении."
+	}
+	
+	"Shop"
+	{
+		"ru"			"Магазин"
+	}
+	
+	"Shop Description"
+	{
+		"ru"			"Вы можете купить классные вещи здесь!"
+	}
+	
+	"Inventory"
+	{
+		"ru"			"Инвентарь"
+	}
+	
+	"Inventory Description"
+	{
+		"ru"			"Наденьте или используйте ваши предметы."
+	}
+	
+	"Refund"
+	{
+		"ru"			"Возврат"
+	}
+	
+	"Refund Description"
+	{
+		"ru"			"Не довольны? Возврат здесь."
+	}
+	
+	"Gift"
+	{
+		"ru"			"Подарить"
+	}
+	
+	"Gift Description"
+	{
+		"ru"			"Пожертвуйте деньги или предметы для нуждающихся!"
+	}
+	
+	"Loadout"
+	{
+		"ru"			"Снаряжение"
+	}
+	
+	"Loadout Description"
+	{
+		"ru"			"Настрой своё снаряжение."
+	}
+	
+	"Trade"
+	{
+		"ru"			"Обмен"
+	}
+	
+	"Trade Description"
+	{
+		"ru"			"Обмен предметами и валютами с другими."
+	}
+	
+	"Gift Delivery Method"
+	{
+		"ru"			"Как вы хотите доставить подарок?"
+	}
+	
+	"Gift Method Send"
+	{
+		"ru"			"Отправить игроку"
+	}
+	
+	"Gift Method Drop"
+	{
+		"ru"			"Выбросить на землю"
+	}
+	
+	"Item"
+	{
+		"ru"			"Предмет"
+	}
+	
+	"Gift Credit Confirmation"
+	{
+		"#format"		"{1:s},{2:d},{3:s}"
+		"ru"			"Вы уверены, что хотите дать {1} {2} {3}?"
+	}
+	
+	"Gift Item Confirmation"
+	{
+		"#format"		"{1:s},{2:s}"
+		"ru"			"Вы уверены, что хотите дать {1} предмет {2}?"
+	}
+	
+	"Drop Credit Confirmation"
+	{
+		"#format"		"{1:d},{2:s}"
+		"ru"			"Вы уверены, что хотите выбросить {1} {2}?"
+	}
+	
+	"Drop Item Confirmation"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы уверены, что хотите выбросить {1}?"
+	}
+	
+	"Gift Item Dropped"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы выбросили {olive}{1}{default}!"
+	}
+	
+	"Gift Credits Dropped"
+	{
+		"#format"		"{1:d}{2:s}"
+		"ru"			"Вы выбросили {olive}{1}{default} {2}!"
+	}
+	
+	"Gift Credits Found"
+	{
+		"#format"		"{1:d},{2:s}"
+		"ru"			"Вы нашли {olive}{1}{default} {2}!"
+	}
+	
+	"Gift Item Found"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы нашли {olive}{1}{default}!"
+	}
+	
+	"No items"
+	{
+		"ru"			"У вас нет предметов."
+	}
+	
+	"Gift Request Accept"
+	{
+		"#format"		"{1:s},{2:s}"
+		"ru"			"{teamcolor}{1} {default}хочет дать вам {olive}{2}{default}. Напишите {teamcolor}!accept {default}чтобы принять подарок."
+	}
+	
+	"Gift Waiting to accept"
+	{
+		"#format"		"{1:s}"
+		"ru"			"В ожидании пока {teamcolor}{1} {default}принимет подарок."
+	}
+	
+	"Gift Cancel"
+	{
+		"#format"		""
+		"ru"			"Вы отменили ваш текущий подарок до принятия."
+	}
+	
+	"Gift Active Session"
+	{
+		"#format"		""
+		"ru"			"Вы можете одновременно проводить только одну активную сессию подарков, отмените ее и попробуйте снова."
+	}
+	
+	"Not enough credits"
+	{
+		"#format"		"{1:s}"
+		"ru"				"Вам не хватает {1}."
+	}
+	
+	"Gift accepted - sender"
+	{
+		"#format"		"{1:s}"
+		"ru"			"{teamcolor}{1} {default}принял ваш подарок."
+	}
+	
+	"Gift accepted - receiver"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы приняли подарок игрока {teamcolor}{1}{default}"
+	}
+	
+	"Already purchased item"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Вы уже купили этот предмет: {1}"
+	}
+	
+	"You can't wear this item"
+	{
+		"ru"			"Вы не можете носить этот предмет."
+	}
+	
+	"Reloading categories and items"
+	{
+		"ru"			"Перегрузка категорий и предметов..."
+	}
+	
+	"Reloaded categories"
+	{
+		"ru"			"Все категории были успешно перезагружены."
+	}
+	
+	"Reloaded items"
+	{
+		"ru"			"Все предметы были успешно перезагружены."
+	}
+	
+	"Check console for reload outputs"
+	{
+		"ru"			"Проверьте консоль на reload outputs."
+	}
+	
+	"Store Developer Toggled"
+	{
+		"#format"		"{1:s}"
+		"ru"			"Режим разработчика: [{1}]"
+	}
+	
+	"Cannot access while developer"
+	{
+		"ru"			"Вы не можете получить доступ к этому меню в режиме разработчика."
+	}
+}

@@ -1292,7 +1292,7 @@ public SharedPlugin __pl_store_core =
 #endif
 };
 
-#if defined REQUIRE_PLUGIN
+#if !defined REQUIRE_PLUGIN
 public __pl_store_core_SetNTVOptional()
 {
 	MarkNativeAsOptional("Store_ReloadCacheStacks");

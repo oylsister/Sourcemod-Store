@@ -6,7 +6,7 @@
 
 #include <sdkhooks>
 #include <adminmenu>
-#include <smartdm>
+//#include <smartdm>
 
 //Store Includes
 #include <store/store-core>
@@ -21,10 +21,10 @@
 
 #define MAX_CREDIT_CHOICES 100
 
-enum Present
+enum struct Present
 {
-	Present_Owner,
-	String:Present_Data[64]
+	int Present_Owner;
+	char Present_Data[64];
 }
 
 enum GiftAction
@@ -33,15 +33,15 @@ enum GiftAction
 	GiftAction_Drop
 }
 
-enum GiftRequest
+enum struct GiftRequest
 {
-	bool:GiftRequestActive,
-	GiftRequestSender,
-	GiftType:GiftRequestType,
-	GiftRequestValue
+	bool GiftRequestActive;
+	int GiftRequestSender;
+	GiftType GiftRequestType;
+	int GiftRequestValue;
 }
 
-int g_giftRequests[MAXPLAYERS + 1][GiftRequest];
+GiftRequest g_giftRequests[MAXPLAYERS + 1];
 
 enum GiftType
 {
@@ -58,7 +58,7 @@ char g_itemModel[PLATFORM_MAX_PATH];
 char g_creditsModel[PLATFORM_MAX_PATH];
 int g_itemMenuOrder;
 
-int g_spawnedPresents[2048][Present];
+Present g_spawnedPresents[2048];
 char g_currencyName[64];
 
 public Plugin myinfo =
@@ -174,12 +174,14 @@ public void OnMapStart()
 	if (g_drop_enabled)
 	{
 		PrecacheModel(g_itemModel, true);
-		Downloader_AddFileToDownloadsTable(g_itemModel);
+		AddFileToDownloadsTable(g_itemModel);
+		//Downloader_AddFileToDownloadsTable(g_itemModel);
 
 		if (!StrEqual(g_itemModel, g_creditsModel))
 		{
 			PrecacheModel(g_creditsModel, true);
-			Downloader_AddFileToDownloadsTable(g_creditsModel);
+			//Downloader_AddFileToDownloadsTable(g_creditsModel);
+			AddFileToDownloadsTable(g_creditsModel);
 		}
 	}
 }
@@ -216,8 +218,8 @@ public void DropGiveCreditsCallback(int accountId, int credits, bool bIsNegative
 
 	if (present != -1)
 	{
-		strcopy(g_spawnedPresents[present][Present_Data], 64, sValue);
-		g_spawnedPresents[present][Present_Owner] = client;
+		strcopy(g_spawnedPresents[present].Present_Data, 64, sValue);
+		g_spawnedPresents[present].Present_Owner = client;
 	}
 }
 
@@ -228,7 +230,7 @@ public void OnMainMenuGiftClick(int client, const char[] value)
 
 public void OnClientDisconnect(int client)
 {
-	g_giftRequests[client][GiftRequestActive] = false;
+	g_giftRequests[client].GiftRequestActive = false;
 }
 
 public void ChatCommand_Gift(int client)
@@ -238,28 +240,28 @@ public void ChatCommand_Gift(int client)
 
 public void ChatCommand_Accept(int client)
 {
-	if (!g_giftRequests[client][GiftRequestActive])
+	if (!g_giftRequests[client].GiftRequestActive)
 	{
 		return;
 	}
 
-	if (g_giftRequests[client][GiftRequestType] == GiftType_Credits)
+	if (g_giftRequests[client].GiftRequestType == GiftType_Credits)
 	{
-		GiftCredits(g_giftRequests[client][GiftRequestSender], client, g_giftRequests[client][GiftRequestValue]);
+		GiftCredits(g_giftRequests[client].GiftRequestSender, client, g_giftRequests[client].GiftRequestValue);
 	}
 	else
 	{
-		GiftItem(g_giftRequests[client][GiftRequestSender], client, g_giftRequests[client][GiftRequestValue]);
+		GiftItem(g_giftRequests[client].GiftRequestSender, client, g_giftRequests[client].GiftRequestValue);
 	}
 
-	g_giftRequests[client][GiftRequestActive] = false;
+	g_giftRequests[client].GiftRequestActive = false;
 }
 
 public void ChatCommand_Cancel(int client)
 {
-	if (g_giftRequests[client][GiftRequestActive])
+	if (g_giftRequests[client].GiftRequestActive)
 	{
-		g_giftRequests[client][GiftRequestActive] = false;
+		g_giftRequests[client].GiftRequestActive = false;
 		CPrintToChat(client, "%t%t", "Store Tag Colored", "Gift Cancel");
 	}
 }
@@ -312,7 +314,7 @@ void OpenGiftingMenu(int client)
 			continue;
 		}
 
-		if (g_giftRequests[i][GiftRequestActive] && g_giftRequests[i][GiftRequestSender] == client)
+		if (g_giftRequests[i].GiftRequestActive && g_giftRequests[i].GiftRequestSender == client)
 		{
 			CPrintToChat(client, "%t%t", "Store Tag Colored", "Gift Active Session");
 			return;
@@ -793,8 +795,8 @@ public int ItemConfirmMenuSelectItem(Handle menu, MenuAction action, int client,
 							char data[32];
 							Format(data, sizeof(data), "item,%d", itemId);
 
-							strcopy(g_spawnedPresents[present][Present_Data], 64, data);
-							g_spawnedPresents[present][Present_Owner] = client;
+							strcopy(g_spawnedPresents[present].Present_Data, 64, data);
+							g_spawnedPresents[present].Present_Owner = client;
 
 							Store_RemoveUserItem(GetSteamAccountID(client), itemId, DropItemCallback, client);
 						}
@@ -849,10 +851,10 @@ void AskForPermission(int client, int giftTo, GiftType giftType, int value)
 	GetClientName(client, sName, sizeof(sName));
 	CPrintToChatEx(giftTo, client, "%t%t", "Store Tag Colored", "Gift Request Accept", client, sName, what);
 
-	g_giftRequests[giftTo][GiftRequestActive] = true;
-	g_giftRequests[giftTo][GiftRequestSender] = client;
-	g_giftRequests[giftTo][GiftRequestType] = giftType;
-	g_giftRequests[giftTo][GiftRequestValue] = value;
+	g_giftRequests[giftTo].GiftRequestActive = true;
+	g_giftRequests[giftTo].GiftRequestSender = client;
+	g_giftRequests[giftTo].GiftRequestType = giftType;
+	g_giftRequests[giftTo].GiftRequestValue = value;
 }
 
 void GiftCredits(int from, int to, int amount)
@@ -979,7 +981,7 @@ int SpawnPresent(int owner, const char[] model)
 
 public void OnStartTouch(int present, int client)
 {
-	if (!(0 < client <= MaxClients) || g_spawnedPresents[present][Present_Owner] == client)
+	if (!(0 < client <= MaxClients) || g_spawnedPresents[present].Present_Owner == client)
 	{
 		return;
 	}
@@ -994,7 +996,7 @@ public void OnStartTouch(int present, int client)
 	AcceptEntityInput(present, "Kill");
 
 	char values[2][16];
-	ExplodeString(g_spawnedPresents[present][Present_Data], ",", values, sizeof(values), sizeof(values[]));
+	ExplodeString(g_spawnedPresents[present].Present_Data, ",", values, sizeof(values), sizeof(values[]));
 
 	Handle hPack = CreateDataPack();
 	WritePackCell(hPack, client);

@@ -1,12 +1,12 @@
-#if defined _mutlicolors_included
+#if defined _multicolors_included
 	#endinput
 #endif
-#define _mutlicolors_included
+#define _multicolors_included
 
-#include <multicolors/colors>
+#define MuCo_VERSION "2.1.2"
+
 #include <multicolors/morecolors>
-
-#define MuCo_VERSION "1.0.1"
+#include <multicolors/colors>
 
 /*
 *
@@ -23,10 +23,39 @@
 
 
 
+#define PREFIX_MAX_LENGTH 64
+#define PREFIX_SEPARATOR "{default} "
+
 /* Global var to check whether colors are fixed or not */
-new bool:g_bCFixColors = false;
+static bool g_bCFixColors;
 
+static char g_sCPrefix[PREFIX_MAX_LENGTH];
 
+/**
+ * Add a chat prefix before all chat msg
+ *
+ * @param sPrefix		Prefix
+ */
+stock void CSetPrefix(const char[] sPrefix, any ...) {
+	if (!sPrefix[0]) {
+		return;
+	}
+
+	SetGlobalTransTarget(LANG_SERVER);
+	VFormat(g_sCPrefix, sizeof(g_sCPrefix) - strlen(PREFIX_SEPARATOR), sPrefix, 2);
+
+	// Add ending space
+	Format(g_sCPrefix, sizeof(g_sCPrefix), "%s%s", g_sCPrefix, PREFIX_SEPARATOR);
+}
+
+/**
+ * Add a chat prefix before all chat msg
+ *
+ * @param sPrefix		Prefix
+ */
+stock void CClearPrefix() {
+	g_sCPrefix[0] = '\0';
+}
 
 /**
  * Writes a message to a client with the correct stock for the game.
@@ -34,33 +63,24 @@ new bool:g_bCFixColors = false;
  * @param client        Client index.
  * @param message       Message (formatting rules).
  *
- * @noreturn
  * @error               If the client is not connected an error will be thrown.
  */
-stock CPrintToChat(client, const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CPrintToChat(int client, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(client);
 	VFormat(buffer, sizeof(buffer), message, 3);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_PrintToChat(client, buffer);
+	if (!IsSource2009()) {
+		C_PrintToChat(client, "%s%s", g_sCPrefix, buffer);
 	}
-	else
-	{
-		MC_PrintToChat(client, buffer);
+	else {
+		MC_PrintToChat(client, "%s%s", g_sCPrefix, buffer);
 	}
 }
-
-
 
 /**
  * Prints a message to all clients in the chat area.
@@ -68,34 +88,72 @@ stock CPrintToChat(client, const String:message[], any:...)
  *
  * @param client	  Client index.
  * @param message     Message (formatting rules)
- * @return			  No return
  */
-stock CPrintToChatAll(const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
-	VFormat(buffer, sizeof(buffer), message, 2);
-
-
-	if (!g_bCFixColors)
-	{
+stock void CPrintToChatAll(const char[] message, any ...) {
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
+	char buffer[MAX_BUFFER_LENGTH];
+	if (!IsSource2009()) {
+		for (int i = 1; i <= MaxClients; ++i) {
+			if (IsClientInGame(i) && !IsFakeClient(i) && !C_SkipList[i]) {
+				SetGlobalTransTarget(i);
+				VFormat(buffer, sizeof(buffer), message, 2);
 
-	if (!IsSource2009())
-	{
-		C_PrintToChatAll(buffer);
+				C_PrintToChat(i, "%s", buffer);
+			}
+
+			C_SkipList[i] = false;
+		}
 	}
-	else
-	{
-		MC_PrintToChatAll(buffer);
+	else {
+		MC_CheckTrie();
+
+		char buffer2[MAX_BUFFER_LENGTH];
+
+		for (int i = 1; i <= MaxClients; ++i) {
+			if (!IsClientInGame(i) || MC_SkipList[i]) {
+				MC_SkipList[i] = false;
+				continue;
+			}
+
+			SetGlobalTransTarget(i);
+			Format(buffer, sizeof(buffer), "\x01%s", message);
+			VFormat(buffer2, sizeof(buffer2), buffer, 2);
+
+			MC_ReplaceColorCodes(buffer2);
+			MC_SendMessage(i, buffer2);
+		}
 	}
 }
 
+/**
+ * Writes a message to all of a client's observers.
+ *
+ * @param target 	Client index.
+ * @param message	Message (formatting rules).
+ */
+stock void CPrintToChatObservers(int target, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
+	VFormat(buffer, sizeof(buffer), message, 3);
 
+	if (!g_bCFixColors) {
+		CFixColors();
+	}
 
-
+ 	for (int client = 1; client <= MaxClients; client++) {
+ 		if (IsClientInGame(client) && !IsPlayerAlive(client) && !IsFakeClient(client)) {
+ 			int observee = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
+ 			int ObserverMode = GetEntProp(client, Prop_Send, "m_iObserverMode");
+ 
+ 			if (observee == target && (ObserverMode == 4 || ObserverMode == 5)) {
+ 				CPrintToChat(client, buffer);
+ 			}
+ 		}
+ 	}
+}
 
 /**
  * Writes a message to a client with the correct stock for the game.
@@ -104,99 +162,98 @@ stock CPrintToChatAll(const String:message[], any:...)
  * @param author        Author index.
  * @param message       Message (formatting rules).
  *
- * @noreturn
  * @error               If the client is not connected an error will be thrown.
  */
-stock CPrintToChatEx(client, author, const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CPrintToChatEx(int client, int author, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(client);
 	VFormat(buffer, sizeof(buffer), message, 4);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
-	
 
-	if (!IsSource2009())
-	{
-		C_PrintToChatEx(client, author, buffer);
+	if (!IsSource2009()) {
+		C_PrintToChatEx(client, author, "%s%s", g_sCPrefix, buffer);
 	}
-	else
-	{
-		MC_PrintToChatEx(client, author, buffer);
+	else {
+		MC_PrintToChatEx(client, author, "%s%s", g_sCPrefix, buffer);
 	}
 }
-
-
 
 /**
  * Writes a message to all clients with the correct stock for the game.
  *
  * @param author        Author index.
  * @param message       Message (formatting rules).
- *
- * @noreturn
  */
-stock CPrintToChatAllEx(author, const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CPrintToChatAllEx(int author, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
 	VFormat(buffer, sizeof(buffer), message, 3);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_PrintToChatAllEx(author, buffer);
+	if (!IsSource2009()) {
+		C_PrintToChatAllEx(author, "%s%s", g_sCPrefix, buffer);
 	}
-	else
-	{
-		MC_PrintToChatAllEx(author, buffer);
+	else {
+		MC_PrintToChatAllEx(author, "%s%s", g_sCPrefix, buffer);
 	}
 }
 
+/**
+ * Writes a message to all of a client's observers with the correct
+ * game stock.
+ *
+ * @param target 	Client index.
+ * @param message	Message (formatting rules).
+ */
+stock void CPrintToChatObserversEx(int target, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
+	VFormat(buffer, sizeof(buffer), message, 3);
 
+	if (!g_bCFixColors) {
+		CFixColors();
+	}
 
+ 	for (int client = 1; client <= MaxClients; client++) {
+ 		if (IsClientInGame(client) && !IsPlayerAlive(client) && !IsFakeClient(client)) {
+ 			int observee = GetEntPropEnt(client, Prop_Send, "m_hObserverTarget");
+ 			int ObserverMode = GetEntProp(client, Prop_Send, "m_iObserverMode");
+ 
+ 			if (observee == target && (ObserverMode == 4 || ObserverMode == 5)) {
+ 				CPrintToChatEx(client, target, buffer);
+ 			}
+ 		}
+ 	}
+}
 
 /**
  * Replies to a command with colors
  * 
  * @param client		Client to reply to
  * @param message		Message (formatting rules)
- * @noreturn
  */
-stock CReplyToCommand(author, const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CReplyToCommand(int client, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(client);
 	VFormat(buffer, sizeof(buffer), message, 3);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_ReplyToCommand(author, buffer);
+	if (!IsSource2009()) {
+		C_ReplyToCommand(client, "%s%s", g_sCPrefix, buffer);
 	}
-	else
-	{
-		MC_ReplyToCommand(author, buffer);
+	else {
+		MC_ReplyToCommand(client, "%s%s", g_sCPrefix, buffer);
 	}
 }
-
-
 
 /**
  * Replies to a command with colors
@@ -204,32 +261,45 @@ stock CReplyToCommand(author, const String:message[], any:...)
  * @param client		Client to reply to
  * @param author		Client to use for {teamcolor}
  * @param message		Message (formatting rules)
- * @noreturn
  */
- stock CReplyToCommandEx(client, author, const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CReplyToCommandEx(int client, int author, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(client);
 	VFormat(buffer, sizeof(buffer), message, 4);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_ReplyToCommandEx(client, author, buffer);
+	if (!IsSource2009()) {
+		C_ReplyToCommandEx(client, author, "%s%s", g_sCPrefix, buffer);
 	}
-	else
-	{
-		MC_ReplyToCommandEx(client, author, buffer);
+	else {
+		MC_ReplyToCommandEx(client, author, "%s%s", g_sCPrefix, buffer);
 	}
 }
 
+/**
+ * Remove all tags and print to server
+ * 
+ * @param message		Message (formatting rules)
+ */
+stock void CPrintToServer(const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	char prefixBuffer[PREFIX_MAX_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
+	VFormat(buffer, sizeof(buffer), message, 2);
+	strcopy(prefixBuffer, sizeof(prefixBuffer), g_sCPrefix);
 
+	if (!g_bCFixColors) {
+		CFixColors();
+	}
+
+	CRemoveTags(buffer, sizeof(buffer));
+	CRemoveTags(prefixBuffer, sizeof(prefixBuffer));
+
+	PrintToServer("%s%s", prefixBuffer, buffer);
+}
 
 /**
  * Displays usage of an admin command to users depending on the 
@@ -244,32 +314,25 @@ stock CReplyToCommand(author, const String:message[], any:...)
  * @param client		Client index doing the action, or 0 for server.
  * @param format		Formatting rules.
  * @param ...			Variable number of format parameters.
- * @noreturn
+ * 
  * @error
  */
-stock CShowActivity(author, const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CShowActivity(int author, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
 	VFormat(buffer, sizeof(buffer), message, 3);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_ShowActivity(author, buffer);
+	if (!IsSource2009()) {
+		C_ShowActivity(author, "%s", buffer);
 	}
-	else
-	{
-		MC_ShowActivity(author, buffer);
+	else {
+		MC_ShowActivity(author, "%s", buffer);
 	}
 }
-
 
 /**
  * Same as C_ShowActivity(), except the tag parameter is used instead of "[SM] " (note that you must supply any spacing).
@@ -279,33 +342,25 @@ stock CShowActivity(author, const String:message[], any:...)
  * @param tags			Tag to display with.
  * @param format		Formatting rules.
  * @param ...			Variable number of format parameters.
- * @noreturn
+ * 
  * @error
  */
-stock CShowActivityEx(author, const String:tag[], const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+stock void CShowActivityEx(int author, const char[] tag, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
 	VFormat(buffer, sizeof(buffer), message, 4);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_ShowActivityEx(author, tag, buffer);
+	if (!IsSource2009()) {
+		C_ShowActivityEx(author, tag, "%s", buffer);
 	}
-	else
-	{
-		MC_ShowActivityEx(author, tag, buffer);
+	else {
+		MC_ShowActivityEx(author, tag, "%s", buffer);
 	}
 }
-
-
 
 /**
  * Displays usage of an admin command to users depending on the setting of the sm_show_activity cvar.
@@ -317,63 +372,46 @@ stock CShowActivityEx(author, const String:tag[], const String:message[], any:..
  * @param tags			Tag to prepend to the message.
  * @param format		Formatting rules.
  * @param ...			Variable number of format parameters.
- * @noreturn
+ * 
  * @error
  */
- stock CShowActivity2(author, const String:tag[], const String:message[], any:...)
-{
-	decl String:buffer[MAX_MESSAGE_LENGTH];
-
+ stock void CShowActivity2(int author, const char[] tag, const char[] message, any ...) {
+	char buffer[MAX_MESSAGE_LENGTH];
+	SetGlobalTransTarget(LANG_SERVER);
 	VFormat(buffer, sizeof(buffer), message, 4);
 
-
-	if (!g_bCFixColors)
-	{
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		C_ShowActivity2(author, tag, buffer);
+	if (!IsSource2009()) {
+		C_ShowActivity2(author, tag, "%s", buffer);
 	}
-	else
-	{
-		MC_ShowActivity2(author, tag, buffer);
+	else {
+		MC_ShowActivity2(author, tag, "%s", buffer);
 	}
 }
-
-
 
 /**
  * Replaces color tags in a string with color codes
  *
  * @param message       String.
  * @param maxlength     Maximum length of the string buffer.
- *
- * @noreturn
  */
-stock CFormatColor(String:message[], maxlength, author=-1)
-{
-	if (!g_bCFixColors)
-	{
+stock void CFormatColor(char[] message, int maxlength, int author = -1) {
+	if (!g_bCFixColors) {
 		CFixColors();
 	}
 
-
-	if (!IsSource2009())
-	{
-		if (author == 0)
-		{
+	if (!IsSource2009()) {
+		if (author == 0) {
 			author = -1;
 		}
 
 		C_Format(message, maxlength, author);
 	}
-	else
-	{
-		if (author == -1)
-		{
+	else {
+		if (author == -1) {
 			author = 0;
 		}
 
@@ -381,39 +419,42 @@ stock CFormatColor(String:message[], maxlength, author=-1)
 	}
 }
 
-
+/**
+ * Removes color tags from a message
+ * 
+ * @param message		Message to remove tags from
+ * @param maxlen		Maximum buffer length
+ */
+stock void CRemoveTags(char[] message, int maxlen) {
+	if (!IsSource2009()) {
+		C_RemoveTags(message, maxlen);
+	}
+	else {
+		MC_RemoveTags(message, maxlen);
+	}
+}
 
 /**
  * Fixes missing Lightgreen color.
- *
- * @noreturn
  */
-stock CFixColors()
-{
+stock void CFixColors() {
 	g_bCFixColors = true;
 
 	// Replace lightgreen if not exists
-	if (!C_ColorAllowed(Color_Lightgreen))
-	{
-		if (C_ColorAllowed(Color_Lime))
-		{
+	if (!C_ColorAllowed(Color_Lightgreen)) {
+		if (C_ColorAllowed(Color_Lime)) {
 			C_ReplaceColor(Color_Lightgreen, Color_Lime);
 		}
-		else if (C_ColorAllowed(Color_Olive))
-		{
+		else if (C_ColorAllowed(Color_Olive)) {
 			C_ReplaceColor(Color_Lightgreen, Color_Olive);
 		}
 	}
 }
 
-stock IsSource2009()
-{
-	if(GetEngineVersion() == Engine_CSS || GetEngineVersion() == Engine_HL2DM || GetEngineVersion() == Engine_DODS || GetEngineVersion() == Engine_TF2)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+stock bool IsSource2009() {
+	return (GetEngineVersion() == Engine_CSS
+	|| GetEngineVersion() == Engine_HL2DM
+	|| GetEngineVersion() == Engine_DODS
+	|| GetEngineVersion() == Engine_TF2
+	|| GetEngineVersion() == Engine_SDK2013);
 }

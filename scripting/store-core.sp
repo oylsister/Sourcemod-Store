@@ -130,31 +130,31 @@ Handle hArray_Loadouts;
 
 ////////////////////
 //Main Menu Data
-enum MenuItem
+enum struct MenuItem
 {
-	String:MenuItemDisplayName[32],
-	String:MenuItemDescription[128],
-	String:MenuItemValue[64],
-	Handle:MenuItemPlugin,
-	Store_MenuItemClickCallback:MenuItemCallback,
-	MenuItemOrder,
-	bool:MenuItemTranslate,
-	bool:MenuItemDisabled
+	char MenuItemDisplayName[32];
+	char MenuItemDescription[128];
+	char MenuItemValue[64];
+	Handle MenuItemPlugin;
+	Store_MenuItemClickCallback MenuItemCallback;
+	int MenuItemOrder;
+	bool MenuItemTranslate;
+	bool MenuItemDisabled;
 }
 
-int g_menuItems[MAX_MENU_ITEMS + 1][MenuItem];
+MenuItem g_menuItems[MAX_MENU_ITEMS + 1];
 int g_menuItemCount;
 
 ////////////////////
 //Chat Commands Data
-enum ChatCommand
+enum struct ChatCommand
 {
-	String:ChatCommandName[32],
-	Handle:ChatCommandPlugin,
-	Store_ChatCommandCallback:ChatCommandCallback,
+	char ChatCommandName[32];
+	Handle ChatCommandPlugin;
+	Store_ChatCommandCallback ChatCommandCallback;
 }
 
-int g_chatCommands[MAX_CHAT_COMMANDS + 1][ChatCommand];
+ChatCommand g_chatCommands[MAX_CHAT_COMMANDS + 1];
 int g_chatCommandCount;
 
 ////////////////////
@@ -458,7 +458,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 
 	for (int i = 0; i < g_chatCommandCount; i++)
 	{
-		if (StrEqual(cmds[0], g_chatCommands[i][ChatCommandName], false))
+		if (StrEqual(cmds[0], g_chatCommands[i].ChatCommandName, false))
 		{
 			Action result = Plugin_Continue;
 			Call_StartForward(g_hOnChatCommandForward);
@@ -472,7 +472,7 @@ public Action OnClientSayCommand(int client, const char[] command, const char[] 
 				return Plugin_Continue;
 			}
 
-			Call_StartFunction(g_chatCommands[i][ChatCommandPlugin], g_chatCommands[i][ChatCommandCallback]);
+			Call_StartFunction(g_chatCommands[i].ChatCommandPlugin, g_chatCommands[i].ChatCommandCallback);
 			Call_PushCell(client);
 			Call_PushString(cmds[0]);
 			Call_PushString(cmds[1]);
@@ -646,20 +646,20 @@ void AddMainMenuItem(bool bTranslate = true, const char[] displayName, const cha
 
 	for (; item <= g_menuItemCount; item++)
 	{
-		if (item == g_menuItemCount || StrEqual(g_menuItems[item][MenuItemDisplayName], displayName))
+		if (item == g_menuItemCount || StrEqual(g_menuItems[item].MenuItemDisplayName, displayName))
 		{
 			break;
 		}
 	}
 
-	strcopy(g_menuItems[item][MenuItemDisplayName], 32, displayName);
-	strcopy(g_menuItems[item][MenuItemDescription], 128, description);
-	strcopy(g_menuItems[item][MenuItemValue], 64, value);
-	g_menuItems[item][MenuItemPlugin] = plugin;
-	g_menuItems[item][MenuItemCallback] = callback;
-	g_menuItems[item][MenuItemOrder] = order;
-	g_menuItems[item][MenuItemTranslate] = bTranslate;
-	g_menuItems[item][MenuItemDisabled] = bDisabled;
+	strcopy(g_menuItems[item].MenuItemDisplayName, 32, displayName);
+	strcopy(g_menuItems[item].MenuItemDescription, 128, description);
+	strcopy(g_menuItems[item].MenuItemValue, 64, value);
+	g_menuItems[item].MenuItemPlugin = plugin;
+	g_menuItems[item].MenuItemCallback = callback;
+	g_menuItems[item].MenuItemOrder = order;
+	g_menuItems[item].MenuItemTranslate = bTranslate;
+	g_menuItems[item].MenuItemDisabled = bDisabled;
 
 	if (item == g_menuItemCount)
 	{
@@ -675,7 +675,7 @@ void SortMainMenuItems()
 	{
 		for (int y = 0; y < g_menuItemCount; y++)
 		{
-			if (g_menuItems[x][MenuItemOrder] < g_menuItems[y][MenuItemOrder])
+			if (g_menuItems[x].MenuItemOrder < g_menuItems[y].MenuItemOrder)
 			{
 				g_menuItems[sortIndex] = g_menuItems[x];
 				g_menuItems[x] = g_menuItems[y];
@@ -710,23 +710,23 @@ public void OnGetCreditsComplete(int credits, any data)
 		{
 			case true:
 			{
-				switch (g_menuItems[item][MenuItemTranslate])
+				switch (g_menuItems[item].MenuItemTranslate)
 				{
-					case true: Format(sDisplay, sizeof(sDisplay), "%T\n%T", g_menuItems[item][MenuItemDisplayName], client, g_menuItems[item][MenuItemDescription], client);
-					case false: Format(sDisplay, sizeof(sDisplay), "%s\n%s", g_menuItems[item][MenuItemDisplayName], g_menuItems[item][MenuItemDescription]);
+					case true: Format(sDisplay, sizeof(sDisplay), "%T\n%T", g_menuItems[item].MenuItemDisplayName, client, g_menuItems[item].MenuItemDescription, client);
+					case false: Format(sDisplay, sizeof(sDisplay), "%s\n%s", g_menuItems[item].MenuItemDisplayName, g_menuItems[item].MenuItemDescription);
 				}
 			}
 			case false:
 			{
-				switch (g_menuItems[item][MenuItemTranslate])
+				switch (g_menuItems[item].MenuItemTranslate)
 				{
-					case true: Format(sDisplay, sizeof(sDisplay), "%T", g_menuItems[item][MenuItemDisplayName], client);
-					case false: Format(sDisplay, sizeof(sDisplay), "%s", g_menuItems[item][MenuItemDisplayName]);
+					case true: Format(sDisplay, sizeof(sDisplay), "%T", g_menuItems[item].MenuItemDisplayName, client);
+					case false: Format(sDisplay, sizeof(sDisplay), "%s", g_menuItems[item].MenuItemDisplayName);
 				}
 			}
 		}
 
-		AddMenuItem(menu, g_menuItems[item][MenuItemValue], sDisplay, g_menuItems[item][MenuItemDisabled] ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
+		AddMenuItem(menu, g_menuItems[item].MenuItemValue, sDisplay, g_menuItems[item].MenuItemDisabled ? ITEMDRAW_DISABLED : ITEMDRAW_DEFAULT);
 	}
 
 	SetMenuExitButton(menu, true);
@@ -739,9 +739,9 @@ public int MainMenuSelectHandle(Handle menu, MenuAction action, int client, int 
 	{
 		case MenuAction_Select:
 		{
-			Call_StartFunction(g_menuItems[slot][MenuItemPlugin], g_menuItems[slot][MenuItemCallback]);
+			Call_StartFunction(g_menuItems[slot].MenuItemPlugin, g_menuItems[slot].MenuItemCallback);
 			Call_PushCell(client);
-			Call_PushString(g_menuItems[slot][MenuItemValue]);
+			Call_PushString(g_menuItems[slot].MenuItemValue);
 			Call_Finish();
 		}
 		case MenuAction_End: CloseHandle(menu);
@@ -779,7 +779,7 @@ bool RegisterCommands(Handle plugin, const char[] commands, Store_ChatCommandCal
 	{
 		for (int n = 0; n < count; n++)
 		{
-			if (StrEqual(splitcommands[n], g_chatCommands[i][ChatCommandName], false))
+			if (StrEqual(splitcommands[n], g_chatCommands[i].ChatCommandName, false))
 			{
 				return false;
 			}
@@ -788,9 +788,9 @@ bool RegisterCommands(Handle plugin, const char[] commands, Store_ChatCommandCal
 
 	for (int i = 0; i < count; i++)
 	{
-		strcopy(g_chatCommands[g_chatCommandCount][ChatCommandName], 32, splitcommands[i]);
-		g_chatCommands[g_chatCommandCount][ChatCommandPlugin] = plugin;
-		g_chatCommands[g_chatCommandCount][ChatCommandCallback] = callback;
+		strcopy(g_chatCommands[g_chatCommandCount].ChatCommandName, 32, splitcommands[i]);
+		g_chatCommands[g_chatCommandCount].ChatCommandPlugin = plugin;
+		g_chatCommands[g_chatCommandCount].ChatCommandCallback = callback;
 
 		g_chatCommandCount++;
 	}

@@ -3,8 +3,8 @@
 #endif
 #define _store_core_included
 
-#define STORE_AUTHORS "Alongub, Keith Warren(Drixevel), Arrow768"
-#define STORE_VERSION "1.3.0 dev1"
+#define STORE_AUTHORS "Alongub, Keith Warren(Drixevel), Arrow768, Oylsister"
+#define STORE_VERSION "1.5.0"
 #define STORE_URL "https://github.com/SourceMod-Store/store"
 
 #define STORE_PREFIX "\x04[Store] \x01"

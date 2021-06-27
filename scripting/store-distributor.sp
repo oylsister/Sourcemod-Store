@@ -15,21 +15,21 @@
 
 #define MAX_FILTERS 128
 
-enum Filter
+enum struct Filter
 {
-	String:FilterMap[128],
-	FilterPlayerCount,
-	FilterFlags,
-	Float:FilterMultiplier,
-	Float:FilterMinimumMultiplier,
-	Float:FilterMaximumMultiplier,
-	FilterAddend,
-	FilterMinimumAddend,
-	FilterMaximumAddend,
-	FilterTeam
+	char FilterMap[128];
+	int FilterPlayerCount;
+	int FilterFlags;
+	float FilterMultiplier;
+	float FilterMinimumMultiplier;
+	float FilterMaximumMultiplier;
+	int FilterAddend;
+	int FilterMinimumAddend;
+	int FilterMaximumAddend;
+	int FilterTeam;
 }
 
-int g_filters[MAX_FILTERS][Filter];
+Filter g_filters[MAX_FILTERS];
 int g_filterCount;
 
 float g_timeInSeconds;
@@ -96,26 +96,26 @@ void LoadConfig(const char[] sName, const char[] sFile)
 			{
 				do
 				{
-					g_filters[g_filterCount][FilterMultiplier] = KvGetFloat(hKV, "multiplier", 1.0);
-					g_filters[g_filterCount][FilterMinimumMultiplier] = KvGetFloat(hKV, "min_multiplier", 1.0);
-					g_filters[g_filterCount][FilterMaximumMultiplier] = KvGetFloat(hKV, "max_multiplier", 1.0);
+					g_filters[g_filterCount].FilterMultiplier = KvGetFloat(hKV, "multiplier", 1.0);
+					g_filters[g_filterCount].FilterMinimumMultiplier = KvGetFloat(hKV, "min_multiplier", 1.0);
+					g_filters[g_filterCount].FilterMaximumMultiplier = KvGetFloat(hKV, "max_multiplier", 1.0);
 
-					g_filters[g_filterCount][FilterAddend] = KvGetNum(hKV, "addend");
-					g_filters[g_filterCount][FilterMinimumAddend] = KvGetNum(hKV, "min_addend");
-					g_filters[g_filterCount][FilterMaximumAddend] = KvGetNum(hKV, "max_addend");
+					g_filters[g_filterCount].FilterAddend = KvGetNum(hKV, "addend");
+					g_filters[g_filterCount].FilterMinimumAddend = KvGetNum(hKV, "min_addend");
+					g_filters[g_filterCount].FilterMaximumAddend = KvGetNum(hKV, "max_addend");
 
-					g_filters[g_filterCount][FilterPlayerCount] = KvGetNum(hKV, "player_count", 0);
-					g_filters[g_filterCount][FilterTeam] = KvGetNum(hKV, "team", -1);
+					g_filters[g_filterCount].FilterPlayerCount = KvGetNum(hKV, "player_count", 0);
+					g_filters[g_filterCount].FilterTeam = KvGetNum(hKV, "team", -1);
 
 					char flags[32];
 					KvGetString(hKV, "flags", flags, sizeof(flags));
 
 					if (strlen(flags) != 0)
 					{
-						g_filters[g_filterCount][FilterFlags] = ReadFlagString(flags);
+						g_filters[g_filterCount].FilterFlags = ReadFlagString(flags);
 					}
 
-					KvGetString(hKV, "map", g_filters[g_filterCount][FilterMap], 32);
+					KvGetString(hKV, "map", g_filters[g_filterCount].FilterMap, 32);
 
 					g_filterCount++;
 				} while (KvGotoNextKey(hKV));
@@ -170,10 +170,10 @@ int Calculate(int client, const char[] map, int clientCount)
 
 	for (int i = 0; i < g_filterCount; i++)
 	{
-		if ((g_filters[i][FilterPlayerCount] == 0 || clientCount >= g_filters[i][FilterPlayerCount]) && (StrEqual(g_filters[i][FilterMap], "") || StrEqual(g_filters[i][FilterMap], map)) && (g_filters[i][FilterFlags] == 0 || HasPermission(client, g_filters[i][FilterFlags])) && (g_filters[i][FilterTeam] == -1 || g_filters[i][FilterTeam] == GetClientTeam(client)))
+		if ((g_filters[i].FilterPlayerCount == 0 || clientCount >= g_filters[i].FilterPlayerCount) && (StrEqual(g_filters[i].FilterMap, "") || StrEqual(g_filters[i].FilterMap, map)) && (g_filters[i].FilterFlags == 0 || HasPermission(client, g_filters[i].FilterFlags)) && (g_filters[i].FilterTeam == -1 || g_filters[i].FilterTeam == GetClientTeam(client)))
 		{
-			min = RoundToZero(min * g_filters[i][FilterMultiplier] * g_filters[i][FilterMinimumMultiplier]) + g_filters[i][FilterAddend] + g_filters[i][FilterMinimumAddend];
-			max = RoundToZero(max * g_filters[i][FilterMultiplier] * g_filters[i][FilterMaximumMultiplier]) + g_filters[i][FilterAddend] + g_filters[i][FilterMaximumAddend];
+			min = RoundToZero(min * g_filters[i].FilterMultiplier * g_filters[i].FilterMinimumMultiplier) + g_filters[i].FilterAddend + g_filters[i].FilterMinimumAddend;
+			max = RoundToZero(max * g_filters[i].FilterMultiplier * g_filters[i].FilterMaximumMultiplier) + g_filters[i].FilterAddend + g_filters[i].FilterMaximumAddend;
 		}
 	}
 
